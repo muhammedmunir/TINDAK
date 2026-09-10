@@ -1,0 +1,63 @@
+# ---------- Secrets (Rule 8: secrets must never be committed) ----------
+.env
+.env.*
+!.env.example
+*.pem
+*.p12
+*.jks
+*.keystore
+key.properties
+service-account*.json
+google-services.json
+secrets/
+supabase/.env
+supabase/.temp/
+
+# ---------- Flutter / Dart ----------
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.metadata
+coverage/
+doc/api/
+*.dart.js
+*.info.json
+*.js_
+*.js.deps
+*.js.map
+
+# ---------- Android ----------
+mobile/android/.gradle/
+mobile/android/captures/
+mobile/android/local.properties
+mobile/android/app/debug/
+mobile/android/app/profile/
+mobile/android/app/release/
+mobile/android/.cxx/
+*.iml
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+
+# ---------- IDE ----------
+.idea/
+.vscode/
+!.vscode/settings.json
+*.swp
+*.iws
+.history/
+
+# ---------- OS ----------
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ---------- Build output ----------
+*.apk
+*.aab
+*.aar
+*.so
