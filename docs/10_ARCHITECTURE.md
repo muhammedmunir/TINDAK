@@ -90,8 +90,10 @@ mobile/lib/
 │   ├── config/             build-time config via --dart-define, public values only
 │   └── logging/            no shared content in release logs
 ├── features/
-│   ├── home/               home and empty state (PRD §19)
-│   ├── share/              intent receiver, Share Result screen
+│   ├── home/               home and empty state, Tampal control (PRD §19)
+│   ├── intake/             IncomingText, intake controller, result screen,
+│   │                       clipboard reader — where both paths converge
+│   ├── share/              Android ACTION_SEND channel
 │   ├── understanding/
 │   │   ├── model/          NormalizedContent, DetectedEntity, UnderstandingResult
 │   │   ├── normalizer/

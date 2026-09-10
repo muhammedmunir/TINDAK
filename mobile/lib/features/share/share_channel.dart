@@ -1,23 +1,23 @@
 import 'package:flutter/services.dart';
 
 import 'package:tindak/core/logging/app_logger.dart';
-import 'package:tindak/features/share/shared_text.dart';
+import 'package:tindak/features/intake/incoming_text.dart';
 
 /// The boundary between Android share intents and Dart.
 ///
-/// An interface so the controller can be tested on the Dart VM with no
-/// platform channel and no emulator.
+/// One of TINDAK's two intake paths (PD-033). An interface so the controller
+/// can be tested on the Dart VM with no platform channel and no emulator.
 abstract interface class ShareChannel {
   /// The share that started the app, if it was launched by one.
   ///
   /// Answers once. A second call returns null rather than replaying.
-  Future<SharedText?> initialShare();
+  Future<IncomingText?> initialShare();
 
   /// Called when a share arrives while the app is already running.
-  void onShareReceived(void Function(SharedText share) handler);
+  void onShareReceived(void Function(IncomingText share) handler);
 }
 
-/// Talks to [MainActivity] over a method channel.
+/// Talks to `MainActivity` over a method channel.
 final class MethodChannelShareChannel implements ShareChannel {
   MethodChannelShareChannel([MethodChannel? channel])
     : _channel = channel ?? const MethodChannel(_name);
@@ -28,12 +28,12 @@ final class MethodChannelShareChannel implements ShareChannel {
   final AppLogger _log = const AppLogger('share');
 
   @override
-  Future<SharedText?> initialShare() async {
+  Future<IncomingText?> initialShare() async {
     try {
       final Object? payload = await _channel.invokeMethod<Object?>(
         'getInitialShare',
       );
-      final share = SharedText.tryFrom(payload);
+      final share = IncomingText.fromSharePayload(payload);
       if (payload != null && share == null) {
         _log.failure('share_payload_malformed');
       }
@@ -50,11 +50,11 @@ final class MethodChannelShareChannel implements ShareChannel {
   }
 
   @override
-  void onShareReceived(void Function(SharedText share) handler) {
+  void onShareReceived(void Function(IncomingText share) handler) {
     _channel.setMethodCallHandler((call) async {
       if (call.method != 'onShareReceived') return null;
 
-      final share = SharedText.tryFrom(call.arguments);
+      final share = IncomingText.fromSharePayload(call.arguments);
       if (share == null) {
         _log.failure('share_payload_malformed');
         return null;
