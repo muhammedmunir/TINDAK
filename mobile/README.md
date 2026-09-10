@@ -61,6 +61,32 @@ lib/
 no Flutter imports, no I/O. That is what keeps the largest and most
 failure-prone part of the product testable on the Dart VM without an emulator.
 
+## Known environment issues
+
+### ENV-1 — Android SDK XML version mismatch
+
+`flutter build apk` prints:
+
+```text
+Warning: SDK processing. This version only understands SDK XML versions up to 3
+but an SDK XML file of version 4 was encountered. This can happen if you use
+versions of Android Studio and the command-line tools that were released at
+different times.
+```
+
+The build succeeds and the artifact is correct, so this is not a blocker. It is
+a toolchain mismatch: the Android Gradle Plugin's bundled SDK parser is older
+than the installed command-line tools.
+
+**Fix by aligning the toolchain** — update Android Studio and the command-line
+tools to matching releases, or pin the same versions on every machine and in
+CI. **Do not silence it by lowering `compileSdk`, `targetSdk`, or the Android
+Gradle Plugin version.** Those are product-facing settings and moving them to
+quiet a log line would be trading a real property for a cosmetic one.
+
+Left as-is until CI exists (M1 gate onward), because CI is where a local/CI
+toolchain divergence would actually start to hurt.
+
 ## Status
 
 M1 — foundation. No Share Intent, no detectors, no actions, no Memory, no

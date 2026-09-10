@@ -142,3 +142,7 @@ Not done because an AAB builds.
 
 - Release cadence during closed beta.
 - Whether Play Console access is CEO-only or shared.
+- ENV-1: Android SDK XML version mismatch in the local toolchain. Not a
+  blocker; align Android Studio and the command-line tools before CI, and do
+  not quiet it by lowering compileSdk, targetSdk or AGP. See
+  `mobile/README.md`.
