@@ -1,28 +1,406 @@
 # 10 — ARCHITECTURE
 
 **Owner:** Technical Lead (Claude)
-**Status:** BLOCKED — waiting for Product Pack (`00`–`03`) approval, per Startup Step 2
-**Approval:** CEO (Architecture Lock, Startup Step 4)
+**Approval:** CEO — Architecture Lock (Startup Step 4)
+**Status:** PROPOSED — nothing here is accepted until Architecture Lock
+**Inputs:** `00_PRODUCT_VISION.md`, `01_PRD_V1.md`, `02_PRODUCT_ROADMAP.md`, `03_UX_FLOWS.md`, PD-001…PD-022, ADR-001…ADR-012
 
-> Scaffold only. No architectural decision here is accepted until Step 4.
+---
 
-## Planned contents
+## 1. Scope of this document
 
-- Flutter feature-first module layout under `mobile/lib/`.
-- Understanding Engine: `ContentNormalizer` -> `UnderstandingEngine` ->
-  detectors (`Phone`, `Url`, `Money`, `Date`) -> `UnderstandingResult`.
-  Detectors must be pluggable; no single if/else regex chain (Section 10).
-- `ActionResolver`, independent of UI (Section 11).
-- State management choice, with the technical reason required by AI Rule 6.
-- Share Intent receiver on the Android side.
-- Local-first pipeline with the AI fallback boundary (ADR-005, ADR-006).
-- Offline and caching strategy.
-- Error handling and failure modes.
-- Dependency list, each with a justification.
+How TINDAK V1 is built. It proposes the runtime layers, the module structure,
+the understanding and action engines, the persistence and sync model, and every
+dependency with its justification.
 
-## Constraints already binding
+It does not restate product requirements and does not add features. Where the
+PRD left a technical value open, a proposal is marked **PROPOSAL** and needs CEO
+approval.
 
-- Android only (ADR-002).
-- Supabase is the only backend (ADR-001, AI Rule 7).
-- Explicit Share Intent input only (ADR-003, ADR-004).
-- AI is fallback, never the default path (ADR-006).
+---
+
+## 2. Forces that shape the design
+
+| Product decision | Architectural consequence |
+|---|---|
+| PD-001 guest-first | Auth cannot sit on the critical path. No Supabase call in the core loop. |
+| PD-005 offline core | Local persistence is a first-class store, not a cache. |
+| PD-002 multi-entity | The result type is a list, never a single entity. |
+| PD-003 manual Save | Understanding must run without writing anything. |
+| PD-006 + PD-021 delete | Deletion needs tombstones to propagate between devices. |
+| PD-018 no CRDT | Deterministic last-write-wins, per row. |
+| PD-020 unified Memory | One repository interface; local/cloud split invisible to UI. |
+| PD-012 manual Protect | No network call on URL detection. |
+| PD-011 AI consent | The AI path is opt-in and isolated behind one gateway. |
+
+---
+
+## 3. Layers
+
+```text
+                    ┌──────────────────────────┐
+                    │        UI (Flutter)      │
+                    │  screens, widgets, state │
+                    └────────────┬─────────────┘
+                                 │
+                    ┌────────────┴─────────────┐
+                    │      Application         │
+                    │  use cases, controllers  │
+                    └────────────┬─────────────┘
+                                 │
+        ┌────────────────────────┼────────────────────────┐
+        │                        │                        │
+┌───────┴────────┐    ┌──────────┴─────────┐    ┌─────────┴────────┐
+│  Understanding │    │      Actions       │    │      Memory      │
+│   pure Dart    │    │  resolver + exec   │    │    repository    │
+└───────┬────────┘    └──────────┬─────────┘    └─────────┬────────┘
+        │                        │                        │
+        │                 platform channels        ┌──────┴──────┐
+        │                 (tel, WhatsApp,          │             │
+        │                  browser, notif)    ┌────┴────┐   ┌────┴────┐
+        │                                    │  Local  │   │  Cloud  │
+   ┌────┴────┐                               │ SQLite  │   │Supabase │
+   │   AI    │                               └─────────┘   └─────────┘
+   │ gateway │                                     │             │
+   └────┬────┘                                     └──────┬──────┘
+        │                                                 │
+        └──────────► Supabase Edge Functions ◄────────────┘
+                     (AI, URL reputation)
+```
+
+**Rule:** `Understanding` and `Actions` (resolution, not execution) are pure
+Dart with no Flutter and no I/O imports. They are unit-testable on the Dart VM
+without a device or emulator. This is what makes the test plan cheap.
+
+---
+
+## 4. Module structure
+
+Refines Section 20 of the master plan. Two folders are added that the plan did
+not anticipate — `auth/` and `sync/` — because PD-001 and PD-016 introduced
+work that did not previously exist.
+
+```text
+mobile/lib/
+├── app/                    entry point, theme, root widget, route table
+├── core/
+│   ├── result/             Result<T, Failure> type
+│   ├── failure/            typed failures
+│   ├── clock/              injectable clock (date detection is time-sensitive)
+│   └── logging/            no shared content in release logs
+├── features/
+│   ├── share/              intent receiver, Share Result screen
+│   ├── understanding/
+│   │   ├── model/          NormalizedContent, DetectedEntity, UnderstandingResult
+│   │   ├── normalizer/
+│   │   ├── detectors/      phone, url, money, date
+│   │   └── engine/         UnderstandingEngine
+│   ├── actions/
+│   │   ├── model/          ActionDescriptor
+│   │   ├── resolver/       pure: entity -> available actions
+│   │   └── executor/       impure: launches Android intents
+│   ├── memory/             repository, local DAO, cloud DAO, screens
+│   ├── reminders/
+│   ├── security/           local URL heuristics + reputation client
+│   ├── ai/                 consent gate + AI gateway client
+│   ├── auth/               sign-in, session, guest migration
+│   ├── sync/               sync engine, cursor, conflict rule
+│   └── settings/
+└── shared/                 reusable widgets, formatters
+```
+
+---
+
+## 5. Understanding Engine
+
+Section 10 of the master plan forbids one long `if/else` regex chain. The shape:
+
+```text
+raw shared text
+      │
+      ▼
+ContentNormalizer          trim, unify whitespace, normalise unicode
+      │                    (does NOT lowercase — case matters for URLs)
+      ▼
+UnderstandingEngine        holds a List<EntityDetector>
+      │
+      ├─► PhoneDetector    ─┐
+      ├─► UrlDetector       │ each runs independently over the same
+      ├─► MoneyDetector     │ normalized content and returns 0..n entities
+      └─► DateDetector     ─┘
+      │
+      ▼
+overlap resolution         drop entities fully contained inside a
+      │                    higher-confidence entity of another type
+      ▼
+UnderstandingResult        entities: List<DetectedEntity>  (PD-002)
+                           primary: DetectedEntity?        (ranking only)
+```
+
+```dart
+abstract interface class EntityDetector {
+  EntityType get type;
+  List<DetectedEntity> detect(NormalizedContent content);
+}
+```
+
+`DetectedEntity` carries `type`, `rawValue`, `normalizedValue`, `confidence`,
+and the character range `[start, end)` in the normalized text. The range is what
+makes overlap resolution possible and lets the UI highlight matches later.
+
+**Overlap rule.** A URL contains digits that look like a phone number and dots
+that look like a date. The engine resolves by span: if entity A's span is fully
+inside entity B's span and B has higher confidence, A is dropped. Equal-length
+overlaps keep the higher confidence, ties broken by a fixed detector priority
+(`url > phone > money > date`). Deterministic, no heuristics.
+
+**Ranking, not discarding.** `primary` exists only to decide which action the UI
+emphasises. Every meaningful entity is retained (PD-002).
+
+**Performance.** Detection is synchronous on the UI isolate. Input is capped
+(§9) and the detectors are linear regex scans, so the budget is well under one
+frame. No isolate is introduced until a measurement says otherwise.
+
+---
+
+## 6. Action Engine
+
+Split in two, because half of it is testable and half of it is not.
+
+```text
+ActionResolver   pure      UnderstandingResult -> List<ActionDescriptor>
+ActionExecutor   impure    ActionDescriptor    -> Android intent
+```
+
+| Entity | Actions (PRD §5–§8) |
+|---|---|
+| phone | Call, WhatsApp, Save |
+| url | Open, Security Check, Save |
+| money | Copy, Save |
+| date | Reminder, Save |
+| none | Save, and Try AI when consent + session allow |
+
+Save is always present, including on the nothing-detected screen (PRD §18).
+
+`ActionExecutor` is the only place that touches `url_launcher`. It refuses any
+scheme other than `tel:`, `https:`, `http:`, and the WhatsApp deep link, and it
+sanitises the phone number first — see `12_SECURITY.md` §7.
+
+---
+
+## 7. Persistence
+
+### 7.1 Local is the source of truth for the device
+
+```text
+Share ─► Understand ─► [Save] ─► Local SQLite ─► (if signed in) sync ─► Supabase
+```
+
+The core loop never awaits the network. Supabase is a replica the user opts
+into (ADR-013, ADR-014 proposed below).
+
+### 7.2 PROPOSAL — local persistence technology: Drift (SQLite)
+
+| Option | Verdict |
+|---|---|
+| **Drift** (SQLite + FTS5) | **Recommended.** Real SQL, FTS5 full-text search, runs in plain Dart unit tests via `sqlite3` with no emulator, schema migrations are explicit and versioned, and the schema maps almost 1:1 onto the Postgres schema — which keeps the sync code boring. |
+| Hive | No query engine and no full-text search. Memory search (PRD §10) would become an in-memory scan over every row. Rejected. |
+| Isar | Fast with built-in full-text index, but upstream maintenance has been unstable and the project depends on a community fork. Too much risk for the store that holds the user's only copy of guest data. Rejected. |
+| sqflite | Works, but untyped SQL strings and no first-class migration tooling. Drift is a thin layer over the same engine with materially better testability. Rejected. |
+
+Cost: `drift`, `drift_dev`, `build_runner`, `sqlite3_flutter_libs`.
+
+### 7.3 Ownership and provenance
+
+Every local row carries ownership from M5a, before authentication exists. This
+is the constraint raised earlier: without it, M5b cannot separate guest data
+from account data at sign-out (PD-017).
+
+```text
+owner_user_id   NULL      -> guest-owned, stays on device, survives sign-out
+                <uuid>    -> account-owned, purged from device on sign-out
+
+sync_status     local_only | pending | synced
+```
+
+Row IDs are **client-generated UUIDv4**, assigned at Save time, never
+reassigned. Migration at sign-in (PD-016) is then a metadata update
+(`owner_user_id = uid`, `sync_status = pending`) and a push — not a copy, not a
+re-key, no duplicate risk if it is interrupted.
+
+---
+
+## 8. Sync (M5b)
+
+### 8.1 PROPOSAL — last-write-wins on server time
+
+```text
+PUSH   rows where sync_status = 'pending'  ──► upsert into Supabase
+PULL   rows where updated_at > cursor      ◄── ordered by updated_at
+```
+
+- Conflict rule: the row with the greater `updated_at` wins, whole row. The
+  server sets `updated_at` on write, so clocks on devices cannot skew it.
+- Cursor: the largest `updated_at` seen in the last successful pull, stored in
+  `sync_meta`. Overlap by one second on each pull and de-duplicate by id, so a
+  row written during a pull is not skipped.
+- Deletion: `deleted_at` is set, the row is a tombstone. It is never shown, never
+  searchable, never restorable (PD-021).
+- Tombstone purge: **PROPOSAL — 90 days**, server-side. A client that has not
+  synced for longer than the purge window cannot trust incremental pull, so it
+  drops all account-owned local rows and does a full re-pull. Guest-owned rows
+  are untouched.
+- Trigger points: after sign-in, on Save/Delete while signed in, on app resume,
+  and on manual pull-to-refresh. No background service, no periodic worker.
+
+This is the simplest strategy that is still deterministic (PD-018). Two devices
+editing the same memory in the same second is a lost update — accepted for V1
+and stated in the PRD as out of scope.
+
+---
+
+## 9. Share Intent
+
+### 9.1 PROPOSAL — implement natively, add no package
+
+The Android side is an `intent-filter` for `ACTION_SEND` / `text/plain` plus
+roughly forty lines of Kotlin that read `Intent.EXTRA_TEXT` and hand it to Dart
+over a `MethodChannel`, covering both cold start and warm resume.
+
+`receive_sharing_intent` would do this too, but ADR-003 makes share intent the
+single entry point of the whole product — the one thing that must never break.
+A dependency here buys little and costs control over the exact behaviour on cold
+start, which is where share receivers usually fail. AI Rule 6 says a dependency
+needs a clear technical reason; this one does not have one.
+
+### 9.2 Input cap
+
+**PROPOSAL — 10,000 characters.** Longer input is truncated for understanding,
+with the untruncated text still shown and saveable. Any app on the device can
+send an arbitrarily large string; the cap keeps regex scanning and the local
+write bounded. See `12_SECURITY.md` §5.
+
+### 9.3 Launch mode
+
+Share Result is a full-screen route in the single existing Android activity
+(PD-013). `launchMode="singleTask"` with the intent delivered through
+`onNewIntent`, so a second share while TINDAK is open replaces the result
+instead of stacking activities. TINDAK never finishes itself after an external
+action (PD-014).
+
+---
+
+## 10. State management
+
+**PROPOSAL — Riverpod (`flutter_riverpod`), no code generation.**
+
+Providers are plain Dart objects, so application-layer logic is testable without
+`WidgetTester` and without a `BuildContext`. Bloc would add an event/state class
+pair per flow for a five-screen app; `provider` alone gives weaker compile-time
+safety and no easy override for tests. Code generation is skipped to keep
+`build_runner` doing one job only (Drift).
+
+---
+
+## 11. Navigation
+
+**PROPOSAL — Navigator 1.0 with a named route table. No routing package.**
+
+Five screens, no nested navigators, no web URLs, and the share entry point
+arrives as an Android intent rather than a deep link. `go_router` would earn its
+place if deep links or nested shells appear; today it would be a dependency
+without a reason (AI Rule 6). Revisit if V1.5 adds deep links.
+
+---
+
+## 12. Dependencies
+
+Every entry needs a reason (AI Rule 6). Nothing else ships in V1.
+
+| Package | Purpose | Why this one |
+|---|---|---|
+| `flutter_riverpod` | state | §10 |
+| `drift`, `sqlite3_flutter_libs` | local store | §7.2 |
+| `supabase_flutter` | cloud backend, auth | ADR-001 |
+| `flutter_local_notifications` | reminders | ADR-008; the only maintained option |
+| `timezone` | correct local fire time across DST/timezone change | required by the above for scheduled notifications |
+| `url_launcher` | Call, WhatsApp, Open URL | standard platform bridge |
+| `flutter_secure_storage` | Supabase session + any local key material | Keystore-backed; the default session store is plain SharedPreferences |
+| `uuid` | client-generated row ids | §7.3 |
+| `intl` | date and currency formatting for `ms_MY` | avoids hand-rolled formatting |
+
+Dev-only: `flutter_test`, `drift_dev`, `build_runner`, `flutter_lints`.
+
+Not adopted: `receive_sharing_intent` (§9.1), `go_router` (§11), any analytics
+SDK (PD-022), any HTTP client beyond what `supabase_flutter` provides, any
+dependency injection framework, any code-generation package beyond Drift's.
+
+---
+
+## 13. Offline behaviour
+
+| Operation | Offline |
+|---|---|
+| Receive share | works |
+| Normalize + detect (phone, url, money, date) | works |
+| Call, WhatsApp, Open URL, Copy | works — handled by other apps |
+| Save, list, search, delete Memory | works — local |
+| Create and fire reminder | works — local notification |
+| Cloud sync | queued, retried on next trigger |
+| AI fallback, external Security Check | unavailable, explained per UX §18 |
+
+Cloud-only failures never present as a generic network error on operations that
+succeed locally (UX §18).
+
+---
+
+## 14. Error handling
+
+Application and domain layers return `Result<T, Failure>`; exceptions are not
+used for expected outcomes. `Failure` is a sealed type, so the UI must handle
+every case and the three questions in UX §26 can be answered per case.
+
+---
+
+## 15. ESCALATION — decisions that need Product Direction, not me
+
+**E-1. Cloud-only features and guest users.** AI fallback and external URL
+reputation both run in Supabase Edge Functions, and an Edge Function needs a
+JWT to identify who is calling and to enforce a quota. A guest has no JWT.
+
+So in V1 a guest cannot use `Try AI` (UX §19) or the external half of
+`Security Check` (UX §6). Local URL heuristics still work for guests, and every
+local feature is unaffected.
+
+The alternative is unauthenticated access to a metered third-party API keyed to
+our billing, with no way to rate-limit an abuser and no way to stop a scripted
+client. As Security Reviewer I do not recommend it.
+
+This is product-visible: those two buttons need a signed-out state. Product
+Direction should decide the wording and whether the button is hidden or shown
+with a sign-in prompt. Proposed as ADR-025.
+
+**E-2. Dates with no year.** The flagship example in the vision document —
+`Bayar bil TNB RM183.50 sebelum 25 September` — has no year. Proposal: resolve
+to the next occurrence (this year if still ahead, otherwise next year), mark the
+entity `yearInferred`, and let the reminder screen show the resolved date for
+confirmation — which the user already has to visit, since PD-007 requires them
+to pick a time. Needs Product Direction to confirm the inference rule is
+acceptable rather than asking the user for the year.
+
+**E-3. Notification permission timing.** Android 13+ requires a runtime prompt
+for notifications. UX §27 says ask only at the feature that needs it, so the
+prompt lands when the user creates their first reminder. If they decline, the
+reminder cannot fire — proposal is to save the reminder anyway and show it in
+Memory Detail with a "notifications are off" state rather than blocking the
+save. Needs confirmation.
+
+---
+
+## 16. Open items carried to Architecture Lock
+
+- Tombstone retention window (§8.1) — 90 days proposed.
+- Share input cap (§9.2) — 10,000 characters proposed.
+- Whether E-1's constraint changes any UX copy.
+- URL reputation provider selection — see `13_API.md` §5.
+- AI limits — see `13_API.md` §4.
