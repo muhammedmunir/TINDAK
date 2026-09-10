@@ -143,6 +143,26 @@ not carry it.
 
 UX must not imply that syncing makes every device ring.
 
+## PD-032 — added by the M2 review
+
+### PD-032 — Invisible and bidirectional characters must not produce a deceptive action
+Raw text may contain zero-width, invisible or bidirectional control characters.
+While TINDAK only displays raw text (M2) these are inert. From M3 onward, when
+text is normalised and turned into entities, a detector must never derive an
+actionable value from a string whose visible form differs from its actual
+content.
+
+A phone number or URL that reads one way on screen and dials or opens another is
+a scam mechanism. TINDAK's own Protect positioning (ADR-009) makes shipping one
+unacceptable.
+
+Required from M3: normalization removes these characters before detection, an
+entity's actionable value comes from the normalised form rather than the raw
+span, and safety tests cover it. Specification in `20_TEST_PLAN.md` section 1.1.
+
+Raised by Product Direction in the M2 review. Not an M2 blocker, because M2 only
+displays raw text and executes nothing.
+
 ---
 
 # Part 3 — Architecture Decisions (Accepted at Architecture Lock, 2026-09-10)
