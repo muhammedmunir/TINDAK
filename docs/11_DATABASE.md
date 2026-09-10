@@ -151,7 +151,7 @@ create index security_scans_user_created_idx
   on public.security_scans (user_id, created_at desc);
 ```
 
-**PROPOSAL — 30-day retention**, purged by a scheduled job. A scan history is a
+**30-day retention** (approved, PD-028), purged by a scheduled job. A scan history is a
 browsing history; keeping it forever creates a privacy liability with no product
 value. Not synced to the device.
 
@@ -330,7 +330,8 @@ The CEO approves this schema before the first production migration is applied.
 
 ## 7. Open items
 
-- Tombstone purge window — 90 days proposed (`10_ARCHITECTURE.md` §8.1).
-- `security_scans` retention — 30 days proposed (§2.5).
 - Whether reminders that do not fire on a second device (§2.4) is acceptable
-  for V1. Product Direction decides.
+  for V1. Product Direction decides — tracked as O-4 in `90_DECISIONS.md`.
+
+Closed: tombstone purge 90 days and `security_scans` retention 30 days are
+approved as PD-028.

@@ -127,6 +127,12 @@ Master plan §41 in full, plus the items the guest-first decision added:
 - Sign-out leaves no account-owned data readable on the device (PD-017).
 - Deletion propagates between devices and never resurrects (PD-021).
 - No telemetry contains shared content, and guests send none (PD-022).
+- A Malaysian IC number is never a Call or WhatsApp candidate, and `*` or `#`
+  never reaches a `tel:` URI — required tests, release-blocking (PD-029).
+- A denied notification permission still saves the reminder, and TINDAK never
+  claims an alert will fire when it will not (PD-026).
+- Guests see cloud controls with a sign-in prompt, and sign-in is never
+  treated as AI consent (PD-023, PD-024).
 
 Not done because an AAB builds.
 

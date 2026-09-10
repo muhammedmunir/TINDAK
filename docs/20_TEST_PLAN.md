@@ -56,7 +56,7 @@ Accept, after normalisation:
 082-123456          019 8765432         60123456789
 ```
 
-### 2.2 Must NOT detect
+### 2.2 Must NOT detect — REQUIRED safety tests (PD-029)
 
 ```text
 901231-14-5678      Malaysian IC — 12 digits, would otherwise look like a phone
@@ -72,6 +72,19 @@ twelve digits, often hyphenated, and appears in exactly the messages people will
 share. Detecting one as a phone number would put an IC number one tap away from
 being dialled. Guard: reject any candidate that sits inside a longer digit run,
 and reject the `\d{6}-\d{2}-\d{4}` shape outright.
+
+Product Direction classified this as a required safety requirement, not an
+optional enhancement (PD-029). These assertions cannot be removed or skipped to
+make a build pass (AI Rule 10), and a release with any of them failing is
+blocked.
+
+Additional IC forms that must not be detected:
+
+```text
+900101-03-1234      hyphenated
+900101 03 1234      spaced
+900101031234        unseparated, 12 digits
+```
 
 ### 2.3 Confidence
 
@@ -147,20 +160,21 @@ this is a table, not a language detector.
 0341234567        a phone number is not a date
 ```
 
-### 4.3 PROPOSAL — two-digit years
+### 4.3 Two-digit years — rejected (ADR-026)
 
 `25/09/26` is **rejected** in V1. A reminder set to the wrong year is a silent
 failure the user only discovers by missing something, and PD-007 already
 establishes that TINDAK does not invent time values. The PRD baseline is
 four-digit years; this keeps the code aligned with it. Proposed as ADR-026.
 
-### 4.4 PROPOSAL — dates with no year
+### 4.4 Dates with no year — approved (PD-025)
 
 `25 September`, with no year, is the form in the vision document's own flagship
-example. Proposal: resolve to the **next occurrence** — this year if the date is
-still ahead, otherwise next year — and flag the entity `yearInferred`. The
-reminder screen shows the resolved date, and the user is already there choosing
-a time (PD-007), so an inference error is visible before it matters.
+example. Resolve to the **next occurrence** — this year if the date is still
+ahead, otherwise next year — and flag the entity `yearInferred`. The reminder
+screen shows the resolved year in full and lets the user change it before the
+reminder is created (PD-007, PD-025), so an inference error is visible before it
+matters. `yearInferred` is internal; it never appears in the UI as jargon.
 
 Test cases pin the clock:
 
@@ -179,11 +193,13 @@ Escalated as E-2 in `10_ARCHITECTURE.md` §15.
 Detect `http://` and `https://`, and `www.`-prefixed hosts which are normalised
 to `https://`.
 
-**Bare domains are not detected.** `Jumpa saya di kedai.my esok` would otherwise
-produce a URL, and Malay text is full of tokens that look like a domain. Cost:
-a shared bare domain is missed. Benefit: no false links in ordinary sentences.
-**Needs a Product Direction ruling** — it is a visible detection gap, not purely
-an implementation detail.
+**Bare domains are not detected** (PD-027, approved). `Jumpa saya di kedai.my
+esok` would otherwise produce a URL, and Malay text is full of tokens that look
+like a domain. Cost: a shared bare domain is missed. Benefit: no false links in
+ordinary sentences — a false action is worse than a conservative detector.
+
+Backlogged as *URL Detection Enhancement*, to be revisited only if beta data
+shows users are actually sharing bare domains.
 
 ### 5.1 Must detect
 
@@ -228,6 +244,43 @@ Pure mapping, so the tests are exhaustive: every entity type against its exact
 action list from PRD §5–§8, plus Save always present, plus the empty result
 returning Save and — when consent and session allow — Try AI.
 
+### 7.1 Action executor safety — REQUIRED tests (PD-029)
+
+The executor builds URIs from text that arrived from another app. These
+assertions are release-blocking (`12_SECURITY.md` §7):
+
+| Input | Expected |
+|---|---|
+| `012-345 6789` | `tel:+60123456789` |
+| `+60 12-345 6789` | `tel:+60123456789` |
+| `012345#6789` | **refused** — `#` cannot reach a `tel:` URI |
+| `*21*0123456789#` | **refused** — USSD shape |
+| `012345*6789` | **refused** — `*` cannot reach a `tel:` URI |
+| `javascript:alert(1)` as a URL action | **refused** — scheme not allowed |
+| `file:///data/data/...` as a URL action | **refused** |
+| `intent://...` as a URL action | **refused** |
+| `http://example.com` | opened |
+| `https://example.com` | opened |
+| WhatsApp action on a valid number | `https://wa.me/60123456789`, no free text interpolated |
+
+`#` and `*` in a `tel:` URI are how USSD codes were triggered from links on some
+Android devices. The detector should never produce such a candidate; the
+executor refuses it anyway, because two independent checks are what stops one
+regression from becoming a dialled USSD code.
+
+### 7.2 Guest gating — REQUIRED tests (PD-023, PD-024)
+
+| State | Action | Expected |
+|---|---|---|
+| guest | `Security Check` | local heuristics shown, then sign-in prompt for the online check; control is **visible**, never hidden |
+| guest | `Try AI` | sign-in prompt; no network call made |
+| signed in, no AI consent | `Try AI` | consent screen, not an AI call |
+| signed in, consent declined | any local feature | still works (PD-011) |
+| signed in, consent given | `Try AI` | AI call proceeds |
+
+Sign-in must not be treated as consent, and consent must not be treated as
+sign-in.
+
 ---
 
 ## 8. Memory and sync
@@ -268,6 +321,16 @@ Share text/plain ─► Share Result renders ─► action resolves ─► Save 
 Covered: phone, URL, money, date, multi-entity, nothing-detected, offline,
 reminder-without-time asking for a time, and Save from the nothing-detected
 screen.
+
+Plus the behaviours Product Direction fixed in review:
+
+| Case | Expected |
+|---|---|
+| Notification permission denied, then create a reminder | reminder is **saved**; "notifications are off" state shown with an enable path; Memory Save never blocked (PD-026) |
+| Second reminder after denial | no repeated permission prompt |
+| Reminder created while notifications are off | UI never claims an alert will fire |
+| `25 September` shared after that date has passed | reminder confirmation shows next year, year editable (PD-025) |
+| Guest taps a cloud control | sign-in prompt, control visible (PD-023) |
 
 ---
 
@@ -317,6 +380,9 @@ tables is either not a behaviour change or is missing its test.
 
 ## 14. Open items
 
-- Bare-domain detection (§5) — Product Direction ruling.
-- Two-digit years (§4.3) — ADR-026.
-- No-year date inference (§4.4) — E-2.
+None outstanding in this document. Bare-domain detection (§5), two-digit years
+(§4.3) and no-year inference (§4.4) were all decided in Product Direction
+review and are recorded as PD-025, PD-027 and ADR-026.
+
+The RLS results table in §9 stays empty until M5b runs it. An empty table is not
+a pass.

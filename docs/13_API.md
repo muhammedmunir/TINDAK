@@ -162,12 +162,14 @@ A failed check never renders as low risk (UX §23).
 
 ---
 
-## 4. PROPOSAL — AI limits
+## 4. AI limits — approved as PD-028
 
 PRD §15 requires bounded input, rate limiting, timeout, failure handling and
-abuse protection, and leaves the numbers to me.
+abuse protection, and left the numbers to me. Product Direction approved the
+table below as **initial operational configuration** — tunable from usage,
+abuse and cost data, not immutable product constants.
 
-| Control | Proposed | Reasoning |
+| Control | Approved | Reasoning |
 |---|---|---|
 | Max input | 2,000 characters | A shared WhatsApp message or a page title is well under this. It also bounds the per-call token cost, which is what an abuser would be spending. |
 | Daily quota | 30 calls per user per day | AI is a fallback for text the local engine could not read (ADR-006). A normal user hits it a handful of times a day; 30 is generous and still caps the damage from one compromised account. |
@@ -178,8 +180,7 @@ abuse protection, and leaves the numbers to me.
 | Reputation quota | 60 calls per user per day | Cheaper per call, and a user checking many links is plausible behaviour. |
 
 Counted in Postgres against the token's `user_id`, so reinstalling does not
-reset it. Numbers need CEO approval; they are configuration, changeable without
-an app release.
+reset it. All of it is configuration, changeable without an app release.
 
 **Cost shape.** With these caps the worst case is bounded per user and per day,
 which is the property that matters — the current V1 exposure is a small number
@@ -189,22 +190,76 @@ counts, and a made-up figure here would be worse than none.
 
 ---
 
-## 5. PROPOSAL — URL reputation provider
+## 5. URL reputation provider — verified
 
-Not yet selected. Evaluation criteria, in order: no per-check cost at V1
-volumes, a privacy posture we can explain to a user, no requirement to ship a
-key in the client, and a clear terms-of-service position on our use case.
+Checked against Google's current official documentation, not assumption. The
+first recommendation in the previous draft was wrong on terms, and this is the
+correction.
 
-Google Safe Browsing's Lookup API is the leading candidate — free, widely
-trusted, and reachable from an Edge Function. It receives the full URL, which is
-the privacy cost, and it is the reason PD-012's manual trigger matters.
+### 5.1 Google Safe Browsing API — NOT USABLE by TINDAK
+
+Free, and the obvious first choice, but the usage restrictions say it is
+**"for non-commercial use only (meaning 'not for sale or revenue generating
+purposes')"**, and direct commercial users to Web Risk instead.
+
+The master plan (§30) plans a paid Pro tier. That makes TINDAK
+revenue-generating and puts it outside these terms. Building V1 on Safe
+Browsing would mean either abandoning monetization or migrating providers under
+pressure the moment pricing ships.
+
+Separately, **v4 is deprecated and ends on 31 March 2027** — inside the life of
+V1. v5 is the current version and carries the same non-commercial restriction.
+
+**Rejected on terms, not on quality.**
+
+### 5.2 RECOMMENDED — Google Web Risk, Lookup API (`uris.search`)
+
+Google's commercial equivalent of the same threat data.
+
+| | |
+|---|---|
+| Free tier | 100,000 `uris.search` calls per month |
+| Beyond that | USD 0.50 per 1,000 calls |
+| Commercial use | permitted — this is the commercial product |
+| Key | server-side only, in Edge Function config |
+
+PD-028 caps external checks at 60 per user per day, so the free tier is not
+reached during Founder Alpha, Closed Alpha or Beta. At real usage — a user
+checking a handful of links a day — 100,000 monthly calls covers a user base
+far larger than V1 targets, and the first paid step is USD 0.50 per 1,000.
+
+Privacy cost: the Lookup API receives the full URL. This is precisely why
+PD-012 makes the check manual and why an automatic check was rejected — an
+automatic one would send every shared URL to Google.
+
+Web Risk also offers an Update API, where the client keeps a local hash list and
+only resolves prefix matches remotely. Better privacy, materially more
+complexity, and the resolving call is priced far higher. **Not V1.** Recorded as
+a future privacy improvement.
+
+### 5.3 The interface stays abstracted
+
+```dart
+abstract interface class ReputationProvider {
+  Future<ReputationVerdict> check(Uri url);
+}
+```
+
+One implementation in V1. The Edge Function maps every provider's response onto
+TINDAK's own four verdicts and stable reason codes (§3.2), so replacing the
+provider changes one function and touches neither the client nor the database.
+The provider id is stored on each `security_scans` row, so a later change is
+visible in the data.
 
 Local heuristics (`12_SECURITY.md` §9) run first regardless of provider, so a
 guest, an offline user, or a provider outage still gets a partial, explainable
 answer.
 
-Final selection comes back to the CEO before M8 with terms, cost, and the
-privacy disclosure text.
+**Needs CEO approval:** adopt Web Risk, including accepting a Google Cloud
+billing account before M8. Sources:
+[Safe Browsing usage restrictions](https://developers.google.com/safe-browsing/v4/usage-limits),
+[Safe Browsing overview](https://developers.google.com/safe-browsing),
+[Web Risk pricing](https://cloud.google.com/web-risk/pricing).
 
 ---
 
@@ -236,6 +291,8 @@ find TINDAK broken by a backend deploy.
 
 ## 8. Open items
 
-- Quota, cap, and timeout numbers (§4).
-- Reputation provider (§5).
+- **Adopt Web Risk** (§5.2) — needs CEO approval and a Google Cloud billing
+  account before M8.
 - Whether Google Sign-In lands in V1 or later (§1.1).
+
+Closed: quota, cap and timeout numbers are approved as PD-028 (§4).

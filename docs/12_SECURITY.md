@@ -117,7 +117,7 @@ A release cannot proceed with any of these unresolved.
 
 ## 4. Local data protection
 
-### 4.1 PROPOSAL — no SQLCipher in V1
+### 4.1 No SQLCipher in V1 — deferred, approved (PD-028, ADR-021)
 
 The honest version: SQLCipher's key has to live on the same device as the
 database. It is stored in Keystore-backed secure storage, and code running as
@@ -140,9 +140,27 @@ android:dataExtractionRules="@xml/data_extraction_rules"
 - Sign-out purge (§5) removes account-owned data at the moment it stops being
   the current user's.
 
-Residual risk, stated plainly: a rooted device, or a device unlocked in someone
-else's hands, can read the database. V1 accepts this (T-13). Revisit if Memory
-ever holds credentials or identity documents — which V1 scope excludes.
+### 4.1.1 Residual risk — accepted for V1
+
+Stated plainly, because deferring SQLCipher was approved on the condition that
+the risk is documented rather than glossed:
+
+| Attacker | Reaches the database? | Note |
+|---|---|---|
+| Someone holding an **unlocked** device | **Yes** | They can also just open TINDAK. Encryption changes nothing here. |
+| Someone holding a **locked** device | No | Android file-based encryption protects app storage while locked. |
+| `adb backup` / cloud backup extraction | No | Blocked by `allowBackup=false` and the extraction rules. |
+| Another app on a non-rooted device | No | Android app sandbox. |
+| **Root or device-level malware** | **Yes** | And it would also reach a SQLCipher key held in Keystore-backed storage. |
+| Forensic extraction of a powered-off device | Depends on the OEM and Android version | Outside what an app can control. |
+
+What this means in product terms: TINDAK's local database is as protected as the
+device's own lock screen, and no more. That is an appropriate baseline for the
+data V1 holds — shared messages, bills, phone numbers, links.
+
+**Revisit trigger.** If Memory ever holds credentials, identity documents, or
+financial account details, this decision is reopened before that feature ships.
+V1 scope excludes all three.
 
 **Alternative, if the CEO wants it anyway:** SQLCipher via
 `sqlcipher_flutter_libs`, key generated on first launch and held in
@@ -216,6 +234,10 @@ forgotten.
 
 ## 7. Android intent hardening
 
+Both controls in this section are **required safety requirements with mandatory
+tests** (PD-029), not hardening that can be trimmed under schedule pressure.
+The tests live in `20_TEST_PLAN.md` §2.2 and §7.1.
+
 **Phone numbers into `tel:`.** A detected "phone number" is attacker-controlled
 text — it arrived from whatever app did the share. Before it becomes a URI:
 
@@ -275,6 +297,12 @@ was rejected — an automatic check would leak every shared URL to a vendor.
 - The first external check shows the same kind of disclosure as AI consent.
 - `security_scans` rows expire after 30 days (`11_DATABASE.md` §2.5).
 - Provider failure never renders as safe (UX §23).
+- The recommended provider is **Google Web Risk**, not Safe Browsing — Safe
+  Browsing's terms forbid revenue-generating use, and TINDAK plans a paid tier.
+  Verified against current official documentation in `13_API.md` §5.
+- Web Risk's Lookup API receives the full URL. Its Update API would keep a local
+  hash list and leak far less, at materially higher complexity and cost; it is
+  recorded as a future privacy improvement, not V1.
 
 ---
 
@@ -292,9 +320,12 @@ Both functions require a verified JWT. Neither accepts an anonymous call.
 | Response | validated against a fixed JSON schema before it reaches the UI |
 | Failure | returns a typed error; the UI keeps the shared content (UX §21) |
 
-Quota is counted in Postgres against the calling `user_id`, so it cannot be
-reset by reinstalling the app. Exact numbers are a CEO decision — rationale in
-`13_API.md` §4.
+Approved as PD-028. Quota is counted in Postgres against the calling `user_id`,
+so it cannot be reset by reinstalling the app. Rationale in `13_API.md` §4.
+
+A guest has no JWT and therefore reaches neither function. Product Direction
+approved showing the control with a sign-in prompt rather than hiding it, and
+kept sign-in and AI consent as two separate gates (PD-023, PD-024).
 
 ---
 
@@ -324,8 +355,9 @@ and crash payloads are exactly where private strings escape.
 
 ## 13. Open items
 
-- SQLCipher: defer (recommended) or adopt — §4.1, ADR-021.
-- Quota and cap numbers — §10.
-- Reputation provider selection — `13_API.md` §5.
-- Whether guests see AI and external Security Check as hidden or as a sign-in
-  prompt — `10_ARCHITECTURE.md` §15 E-1.
+- **Adopt Web Risk** as the reputation provider — needs CEO approval and a
+  Google Cloud billing account before M8 (`13_API.md` §5.2).
+
+Closed: SQLCipher deferred with residual risk documented (§4.1.1, PD-028);
+quota and cap numbers approved (§10, PD-028); guests see cloud controls with a
+sign-in prompt, with consent as a separate gate (PD-023, PD-024).

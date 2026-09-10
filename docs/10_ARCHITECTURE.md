@@ -246,7 +246,7 @@ PULL   rows where updated_at > cursor      ◄── ordered by updated_at
   row written during a pull is not skipped.
 - Deletion: `deleted_at` is set, the row is a tombstone. It is never shown, never
   searchable, never restorable (PD-021).
-- Tombstone purge: **PROPOSAL — 90 days**, server-side. A client that has not
+- Tombstone purge: **90 days** (approved, PD-028), server-side. A client that has not
   synced for longer than the purge window cannot trust incremental pull, so it
   drops all account-owned local rows and does a full re-pull. Guest-owned rows
   are untouched.
@@ -275,7 +275,7 @@ needs a clear technical reason; this one does not have one.
 
 ### 9.2 Input cap
 
-**PROPOSAL — 10,000 characters.** Longer input is truncated for understanding,
+**10,000 characters** (approved, PD-028). Longer input is truncated for understanding,
 with the untruncated text still shown and saveable. Any app on the device can
 send an arbitrarily large string; the cap keeps regex scanning and the local
 write bounded. See `12_SECURITY.md` §5.
@@ -362,45 +362,109 @@ every case and the three questions in UX §26 can be answered per case.
 
 ---
 
-## 15. ESCALATION — decisions that need Product Direction, not me
+## 15. Guests and cloud features — resolved
 
-**E-1. Cloud-only features and guest users.** AI fallback and external URL
-reputation both run in Supabase Edge Functions, and an Edge Function needs a
-JWT to identify who is calling and to enforce a quota. A guest has no JWT.
+E-1, E-2 and E-3 were escalated to Product Direction and have been decided.
+The approved behaviour is recorded as PD-023…PD-026 and is binding on the
+implementation.
 
-So in V1 a guest cannot use `Try AI` (UX §19) or the external half of
-`Security Check` (UX §6). Local URL heuristics still work for guests, and every
-local feature is unaffected.
+### 15.1 Guests reach cloud features through sign-in, not through a hidden button
 
-The alternative is unauthenticated access to a metered third-party API keyed to
-our billing, with no way to rate-limit an abuser and no way to stop a scripted
-client. As Security Reviewer I do not recommend it.
+AI fallback and external URL reputation run in Supabase Edge Functions, and an
+Edge Function needs a JWT to attribute a call and enforce a quota. A guest has
+no JWT, so a guest cannot complete either. The control is still shown — hiding
+it would teach the user that TINDAK has no AI and no Protect (PD-023).
 
-This is product-visible: those two buttons need a signed-out state. Product
-Direction should decide the wording and whether the button is hidden or shown
-with a sign-in prompt. Proposed as ADR-025.
+```text
+Guest taps [Security Check]        Guest taps [Try AI]
+        │                                  │
+   local heuristics run              nothing runs yet
+        │                                  │
+   "Sign in to run an online         "Sign in to use cloud AI
+    security check. TINDAK can        understanding."
+    still perform basic checks
+    on this device."                       │
+        │                                  │
+   [Not Now]  [Sign In]              [Not Now]  [Sign In]
+```
 
-**E-2. Dates with no year.** The flagship example in the vision document —
-`Bayar bil TNB RM183.50 sebelum 25 September` — has no year. Proposal: resolve
-to the next occurrence (this year if still ahead, otherwise next year), mark the
-entity `yearInferred`, and let the reminder screen show the resolved date for
-confirmation — which the user already has to visit, since PD-007 requires them
-to pick a time. Needs Product Direction to confirm the inference rule is
-acceptable rather than asking the user for the year.
+**Sign-in is not AI consent** (PD-024). They are two separate gates, in order:
 
-**E-3. Notification permission timing.** Android 13+ requires a runtime prompt
-for notifications. UX §27 says ask only at the feature that needs it, so the
-prompt lands when the user creates their first reminder. If they decline, the
-reminder cannot fire — proposal is to save the reminder anyway and show it in
-Memory Detail with a "notifications are off" state rather than blocking the
-save. Needs confirmation.
+```text
+Guest ─► Try AI ─► Sign In ─► AI disclosure + consent ─► AI processing
+```
+
+A signed-in user who has never consented still sees the consent screen. A user
+who declines consent keeps every local feature (PD-011).
+
+Local URL heuristics (`12_SECURITY.md` §9) run for guests, offline, and during
+a provider outage. Only the external lookup requires an account.
+
+### 15.2 Dates with no year
+
+Resolve to the next occurrence — this year if the date is still ahead,
+otherwise next year — and flag the entity `yearInferred` (PD-025).
+
+The flag never reaches the user as jargon. The reminder confirmation shows the
+resolved date in full, and the year is editable before the reminder is created:
+
+```text
+Create Reminder
+
+25 September 2027
+Time: [ Select time ]
+
+[Cancel] [Create]
+```
+
+The user is already on this screen choosing a time (PD-007), so a wrong
+inference is visible before it can cause a missed reminder.
+
+### 15.3 Notification permission denied
+
+A reminder and a notification are two different things (PD-026). If the runtime
+permission is denied:
+
+- the reminder is still saved;
+- Memory Save is never blocked;
+- the UI states plainly that notifications are off and offers to enable them;
+- the permission prompt is not repeated on every attempt;
+- TINDAK never claims an alert will fire when the OS will not deliver one.
+
+```text
+Reminder saved
+
+Notifications are off.
+TINDAK can't alert you until notifications
+are enabled.
+
+[Not Now] [Enable Notifications]
+```
+
+Recovery is also reachable from Settings.
+
+### 15.4 Bare domains are not detected in V1
+
+`kedai.my` inside a Malay sentence is not treated as a URL (PD-027). A URL needs
+an explicit `http://`, `https://`, or a `www.` prefix. A false action is worse
+than a conservative detector; the gap is backlogged as *URL Detection
+Enhancement* and revisited with beta data. Specification in `20_TEST_PLAN.md`
+§5.
 
 ---
 
 ## 16. Open items carried to Architecture Lock
 
-- Tombstone retention window (§8.1) — 90 days proposed.
-- Share input cap (§9.2) — 10,000 characters proposed.
-- Whether E-1's constraint changes any UX copy.
-- URL reputation provider selection — see `13_API.md` §5.
-- AI limits — see `13_API.md` §4.
+Operational configuration is approved as PD-028: tombstone purge 90 days, share
+cap 10,000 characters, AI input 2,000 characters, AI 30/day and 5/minute,
+timeouts 8s/12s, reputation 60/day, `security_scans` retention 30 days,
+SQLCipher deferred.
+
+Remaining:
+
+- **URL reputation provider** — verified against current official
+  documentation; see `13_API.md` §5. Safe Browsing is **not usable** by TINDAK.
+  Web Risk Lookup API is the recommendation and needs CEO approval.
+- Whether Google Sign-In lands in V1 or later (`13_API.md` §1.1).
+- Reminders synced to a second device do not fire there in V1
+  (`11_DATABASE.md` §2.4) — Product Direction has not yet ruled.
