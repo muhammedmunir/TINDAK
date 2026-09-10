@@ -142,6 +142,9 @@ Not done because an AAB builds.
 
 - Release cadence during closed beta.
 - Whether Play Console access is CEO-only or shared.
+- ENV-2: file writes from scripts silently not persisting on this machine. Not
+  diagnosed; do not change security configuration to work around it without
+  evidence of the cause. See `mobile/README.md`.
 - ENV-1: Android SDK XML version mismatch in the local toolchain. Not a
   blocker; align Android Studio and the command-line tools before CI, and do
   not quiet it by lowering compileSdk, targetSdk or AGP. See

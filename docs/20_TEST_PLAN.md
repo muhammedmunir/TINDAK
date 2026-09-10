@@ -31,6 +31,62 @@ clock; a parser whose tests break in January is not tested.
 
 ---
 
+## 1.1 Normalization safety — REQUIRED from M3 (PD-032)
+
+A string can be made to display as one thing and contain another. Unicode
+format characters — zero-width joiners and spaces, soft hyphens, the byte-order
+mark, and the bidirectional overrides and isolates — are invisible on screen but
+present in the value a detector would act on.
+
+That is a scam mechanism, and it is the exact scam TINDAK claims to protect
+against. A number that reads `012-3456789` and dials something else, or a link
+that reads `bank.com.my` and opens elsewhere, must be impossible to produce.
+
+### Rule
+
+```text
+raw shared text
+      │
+      ▼
+ContentNormalizer   removes Unicode Cf (format) characters
+      │             U+00AD, U+200B–U+200F, U+202A–U+202E,
+      │             U+2060–U+2064, U+2066–U+2069, U+FEFF
+      ▼
+detection runs on the cleaned text only
+      │
+      ▼
+the entity's actionable value comes from the cleaned text,
+never from the raw span
+```
+
+Removal happens once, before any detector runs, so no detector can be written
+that forgets to do it. The Share Result still displays the original text — the
+user sees what was sent — but an entity's value, and later the URI an action is
+built from, come from the cleaned form.
+
+### Required cases
+
+| Input contains | Expected |
+|---|---|
+| `012-345​6789` (zero-width space inside a number) | either detected as `+60123456789`, or not detected — never a different number |
+| `‮` reversing a displayed number | the actionable value matches the cleaned text, not the visual order |
+| `https://exam​ple.com` | host resolves to `example.com`, or the URL is rejected |
+| A soft hyphen inside a URL host | same |
+| A bidi isolate wrapping an entity | entity value unchanged by the isolate |
+| Text with no format characters | byte-for-byte unchanged by normalization |
+
+### Invariant test
+
+For every detected entity: its `normalized_value` contains no Unicode Cf
+character. Asserted once, across every detector, so a new detector inherits the
+guarantee.
+
+Host confusables — punycode and mixed-script lookalikes — are a related but
+separate control and live in the URL security heuristics
+(`12_SECURITY.md` section 9).
+
+---
+
 ## 2. Phone detector specification
 
 Normalisation, in order: strip spaces, hyphens, parentheses and dots; convert a

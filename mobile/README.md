@@ -87,6 +87,20 @@ quiet a log line would be trading a real property for a cosmetic one.
 Left as-is until CI exists (M1 gate onward), because CI is where a local/CI
 toolchain divergence would actually start to hurt.
 
+### ENV-2 — file writes from scripts silently do not persist
+
+During M2, writing files through a Python script launched from Bash reported
+success while the file on disk was unchanged — the same process re-reading the
+file afterwards still saw the old content. Editor-based writes to the same paths
+worked normally.
+
+Not diagnosed, not a build or product problem, and not worth chasing yet. Most
+likely something on this machine watching `C:\Project`.
+
+**Do not change antivirus or security configuration to work around this**
+without first establishing the cause. Use editor writes for source files; if a
+scripted edit is ever needed, read the file back and confirm the change landed.
+
 ## Status
 
 M1 — foundation. No Share Intent, no detectors, no actions, no Memory, no
