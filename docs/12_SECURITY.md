@@ -1,8 +1,8 @@
 # 12 — SECURITY
 
 **Owner:** Technical Lead (Claude), acting as Security Reviewer
-**Approval:** CEO — Architecture Lock
-**Status:** PROPOSED
+**Approval:** CEO — locked 2026-09-10
+**Status:** LOCKED — CEO Architecture Lock, 2026-09-10
 
 Guest-first and local-first (PD-001, PD-005) moved a real amount of user data
 onto the device, where RLS cannot protect it. That shift is the reason this
@@ -166,7 +166,7 @@ V1 scope excludes all three.
 `sqlcipher_flutter_libs`, key generated on first launch and held in
 `flutter_secure_storage`. Costs a larger APK, a key-loss failure mode that
 destroys the user's guest data with no recovery, and a slower cold start. My
-recommendation is to defer it. Proposed as ADR-021.
+recommendation is to defer it. Recorded as ADR-021.
 
 ### 4.2 Session storage
 
@@ -200,7 +200,7 @@ One case needs UX copy: memories that a guest created and later chose to sync
 confirmation dialog must say how many items will be removed from the device and
 that they remain in the account. UX §13 already anticipates this.
 
-**Proposed as ADR-022.**
+ADR-022.
 
 ---
 

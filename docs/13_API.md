@@ -1,8 +1,8 @@
 # 13 — API
 
 **Owner:** Technical Lead (Claude)
-**Approval:** CEO — Architecture Lock
-**Status:** PROPOSED
+**Approval:** CEO — locked 2026-09-10
+**Status:** LOCKED — CEO Architecture Lock, 2026-09-10
 
 Three interfaces: Supabase Auth, Supabase PostgREST through `supabase_flutter`,
 and two Edge Functions. Nothing else talks to the network.
@@ -11,7 +11,7 @@ and two Edge Functions. Nothing else talks to the network.
 
 ## 1. Authentication
 
-### 1.1 PROPOSAL — email OTP (six-digit code)
+### 1.1 Email OTP, six-digit code — ADR-020
 
 | Option | Verdict |
 |---|---|
@@ -22,7 +22,7 @@ and two Edge Functions. Nothing else talks to the network.
 | Google Sign-In | Genuinely good UX and worth adding later. Needs an OAuth client, SHA-1 registration per build variant, and `google_sign_in`. Deferred, not rejected. |
 | Supabase anonymous sign-in | Would create a cloud user for every guest, which is exactly the silent upload PD-016 forbids, and it makes the quota in §4 meaningless — a new anonymous identity per reinstall. **Rejected on security grounds.** |
 
-Proposed as ADR-020.
+ADR-020.
 
 ```text
 Settings ─► Sign in ─► enter email ─► signInWithOtp

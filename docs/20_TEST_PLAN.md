@@ -1,8 +1,8 @@
 # 20 — TEST PLAN
 
 **Owner:** Technical Lead (Claude)
-**Approval:** CEO — Architecture Lock
-**Status:** PROPOSED
+**Approval:** CEO — locked 2026-09-10
+**Status:** LOCKED — CEO Architecture Lock, 2026-09-10
 
 Testing is part of implementation (master plan §26). Tests are never deleted to
 make a build pass (AI Rule 10).
@@ -31,7 +31,7 @@ clock; a parser whose tests break in January is not tested.
 
 ---
 
-## 2. PROPOSAL — Phone detector specification
+## 2. Phone detector specification
 
 Normalisation, in order: strip spaces, hyphens, parentheses and dots; convert a
 leading `+60`, `0060` or `60` to `0`.
@@ -96,7 +96,7 @@ Additional IC forms that must not be detected:
 
 ---
 
-## 3. PROPOSAL — Money detector specification
+## 3. Money detector specification
 
 `RM` or `MYR`, optional space, digits with optional `,` thousands groups,
 optional `.` with one or two decimals. Stored as integer sen
@@ -126,7 +126,7 @@ RM-25           no negative amounts in V1
 
 ---
 
-## 4. PROPOSAL — Date detector specification
+## 4. Date detector specification
 
 Ambiguous numeric dates are **DD/MM/YYYY** (PD-008), so `03/04/2026` is
 3 April 2026.
@@ -165,7 +165,7 @@ this is a table, not a language detector.
 `25/09/26` is **rejected** in V1. A reminder set to the wrong year is a silent
 failure the user only discovers by missing something, and PD-007 already
 establishes that TINDAK does not invent time values. The PRD baseline is
-four-digit years; this keeps the code aligned with it. Proposed as ADR-026.
+four-digit years; this keeps the code aligned with it. ADR-026.
 
 ### 4.4 Dates with no year — approved (PD-025)
 
@@ -188,7 +188,7 @@ Escalated as E-2 in `10_ARCHITECTURE.md` §15.
 
 ---
 
-## 5. PROPOSAL — URL detector specification
+## 5. URL detector specification
 
 Detect `http://` and `https://`, and `www.`-prefixed hosts which are normalised
 to `https://`.

@@ -3,7 +3,7 @@
 **Owner:** Technical Lead (Claude)
 **Approval:** CEO must approve the schema before the first production migration
 is considered locked (master plan §21)
-**Status:** PROPOSED
+**Status:** LOCKED — CEO Architecture Lock, 2026-09-10
 
 Two stores. The local SQLite database is the device's source of truth
 (PD-005). The Postgres database in Supabase is the replica a signed-in user
@@ -298,7 +298,7 @@ the same entity written two ways is found by either.
 Money is stored as an integer, never a float. `RM183.50` as a binary double is
 not exactly 183.50, and money that fails to compare equal to itself is a bug
 that surfaces months later. The master plan's conceptual JSON shows `183.50`;
-that is the display form, not the storage form. **Proposed as ADR-023.**
+that is the display form, not the storage form. ADR-023.
 
 ---
 

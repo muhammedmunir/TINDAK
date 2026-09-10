@@ -1,21 +1,21 @@
 # 10 — ARCHITECTURE
 
 **Owner:** Technical Lead (Claude)
-**Approval:** CEO — Architecture Lock (Startup Step 4)
-**Status:** PROPOSED — nothing here is accepted until Architecture Lock
+**Approval:** CEO — locked 2026-09-10
+**Status:** LOCKED — CEO Architecture Lock, 2026-09-10
 **Inputs:** `00_PRODUCT_VISION.md`, `01_PRD_V1.md`, `02_PRODUCT_ROADMAP.md`, `03_UX_FLOWS.md`, PD-001…PD-022, ADR-001…ADR-012
 
 ---
 
 ## 1. Scope of this document
 
-How TINDAK V1 is built. It proposes the runtime layers, the module structure,
+How TINDAK V1 is built: the runtime layers, the module structure,
 the understanding and action engines, the persistence and sync model, and every
 dependency with its justification.
 
-It does not restate product requirements and does not add features. Where the
-PRD left a technical value open, a proposal is marked **PROPOSAL** and needs CEO
-approval.
+It does not restate product requirements and does not add features. Every
+decision here is locked as an ADR in `90_DECISIONS.md` and is binding until the
+CEO changes it (AI Rule 14).
 
 ---
 
@@ -199,7 +199,7 @@ Share ─► Understand ─► [Save] ─► Local SQLite ─► (if signed in) 
 The core loop never awaits the network. Supabase is a replica the user opts
 into (ADR-013, ADR-014 proposed below).
 
-### 7.2 PROPOSAL — local persistence technology: Drift (SQLite)
+### 7.2 Local persistence technology: Drift (SQLite) — ADR-015
 
 | Option | Verdict |
 |---|---|
@@ -232,7 +232,7 @@ re-key, no duplicate risk if it is interrupted.
 
 ## 8. Sync (M5b)
 
-### 8.1 PROPOSAL — last-write-wins on server time
+### 8.1 Last-write-wins on server time — ADR-019
 
 ```text
 PUSH   rows where sync_status = 'pending'  ──► upsert into Supabase
@@ -261,7 +261,7 @@ and stated in the PRD as out of scope.
 
 ## 9. Share Intent
 
-### 9.1 PROPOSAL — implement natively, add no package
+### 9.1 Implemented natively, no package — ADR-017
 
 The Android side is an `intent-filter` for `ACTION_SEND` / `text/plain` plus
 roughly forty lines of Kotlin that read `Intent.EXTRA_TEXT` and hand it to Dart
@@ -292,7 +292,7 @@ action (PD-014).
 
 ## 10. State management
 
-**PROPOSAL — Riverpod (`flutter_riverpod`), no code generation.**
+**Riverpod (`flutter_riverpod`), no code generation — ADR-016.**
 
 Providers are plain Dart objects, so application-layer logic is testable without
 `WidgetTester` and without a `BuildContext`. Bloc would add an event/state class
@@ -304,7 +304,7 @@ safety and no easy override for tests. Code generation is skipped to keep
 
 ## 11. Navigation
 
-**PROPOSAL — Navigator 1.0 with a named route table. No routing package.**
+**Navigator 1.0 with a named route table. No routing package — ADR-018.**
 
 Five screens, no nested navigators, no web URLs, and the share entry point
 arrives as an Android intent rather than a deep link. `go_router` would earn its
