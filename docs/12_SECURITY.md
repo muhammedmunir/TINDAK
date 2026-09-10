@@ -266,6 +266,36 @@ decision, not ours.
 
 ---
 
+## 7.1 Clipboard
+
+Manual Paste (PD-033) is the second intake path. The clipboard is a shared
+system surface that can hold a password, a TAC, or someone else's private
+message, so the rules are narrow.
+
+**Allowed:** one read, in direct response to the user pressing Tampal.
+
+**Forbidden, and each of these is separately forbidden by ADR-004:**
+
+- reading at launch or on resume;
+- reading on a timer, or any polling;
+- registering a clipboard listener;
+- persisting clipboard contents without the user acting;
+- any attempt to work around Android's clipboard access restrictions.
+
+Android may show its own "pasted from clipboard" notice on recent versions.
+That transparency is welcome and must not be suppressed — the user knowing when
+an app read their clipboard is the point.
+
+Pasted text is untrusted, exactly like shared text: read as plain characters,
+rendered through a `Text` widget, never logged (§11), and subject to the same
+input caps.
+
+Enforcement is a test, not a promise. The clipboard reader sits behind an
+interface and the tests assert the read count is zero until Tampal is pressed —
+including across a lifecycle resume.
+
+---
+
 ## 8. AI privacy
 
 Consent is required before the first cloud call (PD-011) and is recorded

@@ -26,7 +26,7 @@ decision that supersedes it and mark the old one `Superseded by`.
 |---|---|---|
 | ADR-001 | Supabase is the primary backend | Accepted — clarified by ADR-013 |
 | ADR-002 | Initial release is Android only | Accepted |
-| ADR-003 | Input enters via explicit Android Share Intent | Accepted |
+| ADR-003 | Input enters via explicit Android Share Intent | Accepted — **amended by ADR-029** |
 | ADR-004 | No background clipboard monitoring | Accepted |
 | ADR-005 | Local-first understanding | Accepted |
 | ADR-006 | AI is fallback, not default engine | Accepted |
@@ -162,6 +162,55 @@ span, and safety tests cover it. Specification in `20_TEST_PLAN.md` section 1.1.
 
 Raised by Product Direction in the M2 review. Not an M2 blocker, because M2 only
 displays raw text and executes nothing.
+
+## PD-033 — added by the M2 physical-device gate
+
+### PD-033 — Two explicit intake paths: Share and Manual Paste
+Physical testing found that WhatsApp's message context menu offers no Android
+share for a plain text message — only Reply, Forward, Copy, Delete, Info and
+Pin. The sharesheet is never reached, so TINDAK cannot appear. TINDAK's intent
+filter is correct; the system resolver lists it first, and Chrome works.
+
+WhatsApp matters too much to TINDAK's positioning to accept the gap.
+
+V1 therefore supports **two** explicit, user-initiated intake paths:
+
+```text
+PATH 1   Share-capable app ─► Share ─► TINDAK
+PATH 2   Any app with Copy ─► Copy  ─► TINDAK ─► Tampal
+```
+
+Both feed the same understanding pipeline. A detector never learns which path
+the text arrived by.
+
+**Manual Paste reads the clipboard only after the user presses the Paste
+control.** Explicitly forbidden, all of it still forbidden by ADR-004:
+
+- background clipboard monitoring;
+- reading the clipboard at launch or on resume;
+- polling;
+- passive capture of any kind;
+- persisting clipboard contents without a user action;
+- any attempt to work around Android's clipboard privacy restrictions.
+
+**Product copy changes.** No document or screen may tell a user to share a
+WhatsApp text message to TINDAK, because they cannot.
+
+| App | Guidance |
+|---|---|
+| WhatsApp | Copy → TINDAK → Tampal |
+| Browsers and apps with Android share | Share → TINDAK |
+
+An empty or non-text clipboard fails gracefully — a quiet message, not a
+dramatic error.
+
+### PD-034 — ACTION_PROCESS_TEXT is deferred
+Declaring an `ACTION_PROCESS_TEXT` filter would put TINDAK in Android's
+text-selection toolbar. It is not implemented in V1: there is no evidence it
+solves WhatsApp, and its selection behaviour varies across OEMs and apps.
+
+Backlog: *Explore Android `ACTION_PROCESS_TEXT` as an additional explicit
+intake method after V1 validation.* Complexity is not added on a possibility.
 
 ---
 
@@ -349,6 +398,28 @@ costs materially more and is recorded as a future privacy improvement, not V1.
 V1 provider. **Google Cloud billing and API provisioning are deferred until
 before M8** and do not block M1. The `ReputationProvider` abstraction is
 mandatory so domain logic is never bound to Google.
+
+## ADR-029 — Amends ADR-003: explicit intake, not share-only
+**Decision:** ADR-003's principle was that TINDAK never captures content
+passively. The mechanism it named — Android Share Intent — turned out not to
+cover WhatsApp text messages (PD-033), so the principle is restated at the level
+it actually meant:
+
+> V1 supports explicit, user-initiated intake only: Android `ACTION_SEND`
+> `text/plain`, and manual Paste. No passive or background capture.
+
+**What does not change.** ADR-004 stands in full — no background clipboard
+monitoring, no polling, no reading at launch or on resume, no passive capture.
+The clipboard is read only in direct response to the user pressing Paste.
+
+ADR-003's original text is not edited; this record supersedes its scope.
+
+**Why not special-case WhatsApp instead:** a special case would put
+source-awareness into the app. Two intake paths converging on one input type
+keeps every detector, action and screen downstream ignorant of where text came
+from.
+
+**Status:** Accepted — CEO and Product Direction, 2026-09-10.
 
 ---
 
