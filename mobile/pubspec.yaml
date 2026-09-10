@@ -1,0 +1,29 @@
+name: tindak
+description: "Jumpa sesuatu. Tindak terus."
+publish_to: "none"
+
+# Alpha builds are 0.x.y (docs/21_RELEASE_PLAN.md section 2). V1 ships as 1.0.0.
+# The build number never repeats — Play rejects a duplicate.
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.11.0
+
+# Every dependency needs a clear technical reason (AI Rule 6). The full list and
+# its justification is in docs/10_ARCHITECTURE.md section 12; packages arrive at
+# the milestone that needs them, not before.
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State management (ADR-016). Plain providers, no code generation, so
+  # application logic is testable without a BuildContext or WidgetTester.
+  flutter_riverpod: ^3.3.2
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

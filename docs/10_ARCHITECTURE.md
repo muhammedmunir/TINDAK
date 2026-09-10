@@ -84,11 +84,13 @@ work that did not previously exist.
 mobile/lib/
 ├── app/                    entry point, theme, root widget, route table
 ├── core/
-│   ├── result/             Result<T, Failure> type
+│   ├── result/             Result<T> with a sealed Failure
 │   ├── failure/            typed failures
 │   ├── clock/              injectable clock (date detection is time-sensitive)
+│   ├── config/             build-time config via --dart-define, public values only
 │   └── logging/            no shared content in release logs
 ├── features/
+│   ├── home/               home and empty state (PRD §19)
 │   ├── share/              intent receiver, Share Result screen
 │   ├── understanding/
 │   │   ├── model/          NormalizedContent, DetectedEntity, UnderstandingResult

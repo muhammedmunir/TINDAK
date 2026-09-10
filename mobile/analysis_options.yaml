@@ -1,0 +1,41 @@
+# TINDAK static analysis.
+#
+# `flutter analyze` must be clean before any milestone is reported complete
+# (docs/20_TEST_PLAN.md section 12). Warnings are treated as errors so the
+# signal does not decay over time.
+
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  errors:
+    # A clean analyze is a release gate, so warnings must not accumulate.
+    missing_required_param: error
+    missing_return: error
+    todo: ignore
+  exclude:
+    - "**/*.g.dart"
+    - "**/*.freezed.dart"
+
+linter:
+  rules:
+    # Correctness
+    - always_declare_return_types
+    - avoid_dynamic_calls
+    - avoid_slow_async_io
+    - cancel_subscriptions
+    - close_sinks
+    - only_throw_errors
+    - throw_in_finally
+    - unawaited_futures
+
+    # The understanding and action layers must stay pure Dart, and nothing may
+    # log user content, so print is never the right call.
+    - avoid_print
+
+    # Consistency
+    - prefer_single_quotes
+    - prefer_final_locals
+    - directives_ordering
+    - sort_pub_dependencies
+    - unnecessary_parenthesis
+    - use_super_parameters
