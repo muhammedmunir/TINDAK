@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:tindak/features/actions/model/action_descriptor.dart';
 import 'package:tindak/features/intake/incoming_text.dart';
 import 'package:tindak/features/intake/intake_result_screen.dart';
 import 'package:tindak/features/understanding/engine/understanding_engine.dart';
@@ -21,6 +22,7 @@ Future<void> pump(
   IncomingText incoming, {
   bool understand = true,
   VoidCallback? onClose,
+  void Function(ActionDescriptor action)? onAction,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
@@ -29,6 +31,7 @@ Future<void> pump(
         understanding: understand
             ? const UnderstandingEngine().understand(incoming.text)
             : null,
+        onAction: onAction,
         onClose: onClose,
       ),
     ),
@@ -198,41 +201,151 @@ void main() {
     });
   });
 
-  group('IntakeResultScreen — M3 boundary: understand, do not act', () {
-    testWidgets('offers no action of any kind', (tester) async {
+  group('IntakeResultScreen — M4 actions', () {
+    testWidgets('a mobile offers Call and WhatsApp', (tester) async {
+      await pump(tester, sharedOf('012-3456789'), onAction: (_) {});
+
+      expect(find.widgetWithText(OutlinedButton, 'Panggil'), findsOneWidget);
+      expect(find.widgetWithText(OutlinedButton, 'WhatsApp'), findsOneWidget);
+    });
+
+    testWidgets('action labels are Malay; WhatsApp keeps its brand name (PD-037)',
+        (tester) async {
+      await pump(
+        tester,
+        sharedOf('012-3456789 https://example.com'),
+        onAction: (_) {},
+      );
+
+      expect(find.text('Panggil'), findsOneWidget);
+      expect(find.text('Buka'), findsOneWidget);
+      expect(find.text('WhatsApp'), findsOneWidget);
+      expect(find.text('Call'), findsNothing);
+      expect(find.text('Open'), findsNothing);
+    });
+
+    testWidgets('a landline offers Call only', (tester) async {
+      await pump(tester, sharedOf('03-1234 5678'), onAction: (_) {});
+
+      expect(find.widgetWithText(OutlinedButton, 'Panggil'), findsOneWidget);
+      expect(find.text('WhatsApp'), findsNothing);
+    });
+
+    testWidgets('a link offers Open', (tester) async {
+      await pump(tester, sharedOf('https://example.com'), onAction: (_) {});
+
+      expect(find.widgetWithText(OutlinedButton, 'Buka'), findsOneWidget);
+    });
+
+    testWidgets('offers nothing outside M4', (tester) async {
       await pump(
         tester,
         sharedOf('Hubungi 012-3456789 atau https://example.com'),
+        onAction: (_) {},
       );
 
       for (final label in <String>[
-        'Call', 'Panggil', 'WhatsApp', 'Open', 'Buka', 'Save', 'Simpan',
-        'Security Check', 'Semak', 'Copy', 'Salin', 'Try AI',
+        'Save', 'Simpan', 'Security Check', 'Semak', 'Reminder', 'Remind',
+        'Copy', 'Salin', 'Try AI',
       ]) {
         expect(find.text(label), findsNothing, reason: label);
       }
-      expect(find.byType(ElevatedButton), findsNothing);
-      expect(find.byType(FilledButton), findsNothing);
-      expect(find.byType(TextButton), findsNothing);
-      expect(find.byType(OutlinedButton), findsNothing);
     });
 
-    testWidgets('detected values are not tappable', (tester) async {
+    testWidgets('rendering calls no action', (tester) async {
+      final taken = <ActionDescriptor>[];
+
       await pump(
         tester,
         sharedOf('Hubungi 012-3456789 atau https://example.com'),
+        onAction: taken.add,
       );
-
-      // InkWell is what every Material tap target is built on. The received
-      // text itself is selectable, which is intended; the entity rows are not.
-      expect(find.byType(InkWell), findsNothing);
-      expect(find.byType(ListTile), findsNothing);
-
-      await tester.tap(find.text('012-3456789'));
       await tester.pumpAndSettle();
 
+      expect(taken, isEmpty);
+    });
+
+    testWidgets('pressing a button calls exactly that action once',
+        (tester) async {
+      final taken = <ActionDescriptor>[];
+      await pump(tester, sharedOf('012-3456789'), onAction: taken.add);
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Panggil'));
+      await tester.pump();
+
+      expect(taken, hasLength(1));
+      expect(taken.single.kind, ActionKind.call);
+      expect(taken.single.entity.normalizedValue, '+60123456789');
+    });
+
+    testWidgets('each row acts on its own entity, never another',
+        (tester) async {
+      final taken = <ActionDescriptor>[];
+      await pump(
+        tester,
+        sharedOf('Ali 012-3456789, Siti 019-8765432, pejabat 03-1234 5678'),
+        onAction: taken.add,
+      );
+
+      final calls = find.widgetWithText(OutlinedButton, 'Panggil');
+      expect(calls, findsNWidgets(3));
+
+      await tester.tap(calls.at(1));
+      await tester.pump();
+      await tester.tap(find.widgetWithText(OutlinedButton, 'WhatsApp').at(0));
+      await tester.pump();
+      await tester.tap(calls.at(2));
+      await tester.pump();
+
+      expect(taken.map((a) => '${a.kind.name}:${a.entity.normalizedValue}'),
+          <String>[
+        'call:+60198765432',
+        'whatsapp:+60123456789',
+        'call:+60312345678',
+      ]);
+    });
+
+    testWidgets('tapping a detected value does not act', (tester) async {
+      // The row is information. A user tapping a number to read it must not
+      // find the dialer open.
+      final taken = <ActionDescriptor>[];
+      await pump(
+        tester,
+        sharedOf('Hubungi 012-3456789 atau https://example.com'),
+        onAction: taken.add,
+      );
+
+      await tester.tap(find.text('012-3456789'));
+      await tester.tap(find.text('example.com'));
+      await tester.tap(find.text('Telefon'));
+      await tester.pumpAndSettle();
+
+      expect(taken, isEmpty);
       expect(tester.takeException(), isNull);
-      expect(find.byType(IntakeResultScreen), findsOneWidget);
+    });
+
+    testWidgets('without an action handler no buttons are shown',
+        (tester) async {
+      await pump(tester, sharedOf('012-3456789'));
+
+      expect(find.byType(OutlinedButton), findsNothing);
+      expect(find.text('Telefon'), findsOneWidget);
+    });
+
+    testWidgets('buttons fit a narrow viewport without overflow',
+        (tester) async {
+      tester.view.physicalSize = const Size(320, 640);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+
+      await pump(
+        tester,
+        sharedOf('011-12345678 https://www.example.com.my/panjang'),
+        onAction: (_) {},
+      );
+
+      expect(tester.takeException(), isNull);
     });
   });
 }

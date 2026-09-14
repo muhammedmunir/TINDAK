@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tindak/app/tindak_app.dart';
+import 'package:tindak/features/actions/executor/action_runner.dart';
+import 'package:tindak/features/actions/executor/external_launcher.dart';
 import 'package:tindak/features/home/home_screen.dart';
 import 'package:tindak/features/intake/clipboard_reader.dart';
 import 'package:tindak/features/intake/incoming_text.dart';
@@ -50,10 +52,23 @@ IncomingText shareOf(int sequence, String text) => IncomingText(
   receivedAt: DateTime.fromMillisecondsSinceEpoch(sequence * 1000),
 );
 
+/// Records every URI TINDAK hands to Android.
+final class RecordingLauncher implements ExternalLauncher {
+  final List<String> launched = <String>[];
+  bool result = true;
+
+  @override
+  Future<bool> launch(Uri uri) async {
+    launched.add(uri.toString());
+    return result;
+  }
+}
+
 Future<void> pumpApp(
   WidgetTester tester,
   FakeShareChannel channel, {
   FakeClipboardReader? clipboard,
+  RecordingLauncher? launcher,
 }) async {
   await tester.pumpWidget(
     ProviderScope(
@@ -62,11 +77,28 @@ Future<void> pumpApp(
         clipboardReaderProvider.overrideWithValue(
           clipboard ?? FakeClipboardReader(),
         ),
+        externalLauncherProvider.overrideWithValue(
+          launcher ?? RecordingLauncher(),
+        ),
       ],
       child: const TindakApp(),
     ),
   );
   await tester.pumpAndSettle();
+}
+
+/// Drives the app through a full background-and-return cycle.
+void cycleLifecycle(WidgetTester tester) {
+  for (final state in <AppLifecycleState>[
+    AppLifecycleState.inactive,
+    AppLifecycleState.hidden,
+    AppLifecycleState.paused,
+    AppLifecycleState.hidden,
+    AppLifecycleState.inactive,
+    AppLifecycleState.resumed,
+  ]) {
+    tester.binding.handleAppLifecycleStateChanged(state);
+  }
 }
 
 void main() {
@@ -303,6 +335,208 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(clipboard.reads, 0);
+    });
+  });
+
+  group('action engine — M4', () {
+    const message = 'Hubungi 012-3456789, pejabat 03-1234 5678, '
+        'lihat https://www.tnb.com.my/bayar';
+
+    testWidgets('a cold-start share launches nothing on render',
+        (tester) async {
+      final launcher = RecordingLauncher();
+
+      await pumpApp(
+        tester,
+        FakeShareChannel(initial: shareOf(1, message)),
+        launcher: launcher,
+      );
+
+      expect(find.text('Dikesan'), findsOneWidget);
+      expect(launcher.launched, isEmpty);
+    });
+
+    testWidgets('a share while running launches nothing', (tester) async {
+      final launcher = RecordingLauncher();
+      final channel = FakeShareChannel();
+      await pumpApp(tester, channel, launcher: launcher);
+
+      channel.emit(shareOf(1, message));
+      await tester.pumpAndSettle();
+
+      expect(launcher.launched, isEmpty);
+    });
+
+    testWidgets('a paste launches nothing', (tester) async {
+      final launcher = RecordingLauncher();
+      await pumpApp(
+        tester,
+        FakeShareChannel(),
+        clipboard: FakeClipboardReader(text: message),
+        launcher: launcher,
+      );
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Tampal'));
+      await tester.pumpAndSettle();
+
+      expect(launcher.launched, isEmpty);
+    });
+
+    testWidgets('lifecycle events on a result launch nothing', (tester) async {
+      final launcher = RecordingLauncher();
+      await pumpApp(
+        tester,
+        FakeShareChannel(initial: shareOf(1, message)),
+        launcher: launcher,
+      );
+
+      for (var i = 0; i < 3; i++) {
+        cycleLifecycle(tester);
+        await tester.pumpAndSettle();
+      }
+
+      expect(launcher.launched, isEmpty);
+    });
+
+    testWidgets('Call on a mobile launches the dialer URI once',
+        (tester) async {
+      final launcher = RecordingLauncher();
+      await pumpApp(
+        tester,
+        FakeShareChannel(initial: shareOf(1, message)),
+        launcher: launcher,
+      );
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Panggil').first);
+      await tester.pumpAndSettle();
+
+      expect(launcher.launched, <String>['tel:+60123456789']);
+    });
+
+    testWidgets('Call on a landline launches its own number', (tester) async {
+      final launcher = RecordingLauncher();
+      await pumpApp(
+        tester,
+        FakeShareChannel(initial: shareOf(1, message)),
+        launcher: launcher,
+      );
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Panggil').at(1));
+      await tester.pumpAndSettle();
+
+      expect(launcher.launched, <String>['tel:+60312345678']);
+    });
+
+    testWidgets('WhatsApp launches wa.me with the normalised mobile',
+        (tester) async {
+      final launcher = RecordingLauncher();
+      await pumpApp(
+        tester,
+        FakeShareChannel(initial: shareOf(1, message)),
+        launcher: launcher,
+      );
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'WhatsApp'));
+      await tester.pumpAndSettle();
+
+      expect(launcher.launched, <String>['https://wa.me/60123456789']);
+    });
+
+    testWidgets('Open launches the https link', (tester) async {
+      final launcher = RecordingLauncher();
+      await pumpApp(
+        tester,
+        FakeShareChannel(initial: shareOf(1, message)),
+        launcher: launcher,
+      );
+
+      await tester.ensureVisible(find.widgetWithText(OutlinedButton, 'Buka'));
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Buka'));
+      await tester.pumpAndSettle();
+
+      expect(launcher.launched, <String>['https://www.tnb.com.my/bayar']);
+    });
+
+    testWidgets('Open launches an http link', (tester) async {
+      final launcher = RecordingLauncher();
+      await pumpApp(
+        tester,
+        FakeShareChannel(initial: shareOf(1, 'http://example.com/a')),
+        launcher: launcher,
+      );
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Buka'));
+      await tester.pumpAndSettle();
+
+      expect(launcher.launched, <String>['http://example.com/a']);
+    });
+
+    testWidgets('an action taken is not repeated by lifecycle events',
+        (tester) async {
+      // The real sequence: tap Call, Android opens the dialer and TINDAK goes
+      // to the background, the user comes back. Returning must not dial again.
+      final launcher = RecordingLauncher();
+      await pumpApp(
+        tester,
+        FakeShareChannel(initial: shareOf(1, message)),
+        launcher: launcher,
+      );
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Panggil').first);
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 3; i++) {
+        cycleLifecycle(tester);
+        await tester.pumpAndSettle();
+      }
+
+      expect(launcher.launched, hasLength(1));
+    });
+
+    testWidgets('the result is still on screen after an action (PD-014)',
+        (tester) async {
+      final launcher = RecordingLauncher();
+      await pumpApp(
+        tester,
+        FakeShareChannel(initial: shareOf(1, message)),
+        launcher: launcher,
+      );
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Panggil').first);
+      await tester.pumpAndSettle();
+      cycleLifecycle(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(IntakeResultScreen), findsOneWidget);
+    });
+
+    testWidgets('no app to handle it shows a quiet message and stays open',
+        (tester) async {
+      final launcher = RecordingLauncher()..result = false;
+      await pumpApp(
+        tester,
+        FakeShareChannel(initial: shareOf(1, message)),
+        launcher: launcher,
+      );
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'WhatsApp'));
+      await tester.pumpAndSettle();
+
+      expect(find.text(IntakeGate.actionUnavailableMessage), findsOneWidget);
+      expect(find.byType(IntakeResultScreen), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('an IC number offers no action at all (PD-029)',
+        (tester) async {
+      final launcher = RecordingLauncher();
+      await pumpApp(
+        tester,
+        FakeShareChannel(initial: shareOf(1, 'No IC 900101-03-1234')),
+        launcher: launcher,
+      );
+
+      expect(find.byType(OutlinedButton), findsNothing);
+      expect(launcher.launched, isEmpty);
     });
   });
 }

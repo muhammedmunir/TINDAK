@@ -201,6 +201,40 @@ Save is always present, including on the nothing-detected screen (PRD §18).
 scheme other than `tel:`, `https:`, `http:`, and the WhatsApp deep link, and it
 sanitises the phone number first — see `12_SECURITY.md` §7.
 
+### 6.1 As built at M4
+
+```text
+DetectedEntity ─► ActionResolver ─► ActionDescriptor ─► [user taps] ─►
+ActionRunner ─► ActionUriBuilder ─► ExternalLauncher ─► Android
+```
+
+- **Each action carries its own entity.** There is no shared "current number",
+  so Call on the second row of a multi-entity result can only dial the second
+  number.
+- **`ActionUriBuilder` trusts nothing upstream.** It reads only the normalised
+  value and requires exact Malaysian E.164 for phones (`^\+60[1-9]\d{7,9}$`) —
+  which by construction excludes `*`, `#`, spaces and every USSD shape — and
+  http or https with a real host for links. It is pure Dart and every refusal is
+  a unit test.
+- **Call opens the dialer pre-filled; it does not place the call.** The user
+  still presses call. This is also why TINDAK needs no `CALL_PHONE` permission.
+- **WhatsApp is offered for mobiles only** (`+601…`). A landline has no
+  WhatsApp account behind it; PRD §5 says "where applicable".
+- **Nothing runs except from a button's `onPressed`.** Not on render, detection,
+  share arrival, paste, or resume. The entity row itself is not a tap target.
+- **A double tap launches once.** `ActionRunner` ignores a tap while a launch
+  is still starting.
+- **Links open in an external app**, never an in-app view — there is no WebView
+  in TINDAK.
+- **Failure is quiet.** No handler or a platform refusal shows one line and
+  leaves the result on screen. The platform error object is not logged, because
+  its message can echo the URI back.
+- TINDAK is never closed after an action (PD-014).
+
+A layer-purity test enforces that `actions/model` and `actions/resolver` import
+nothing impure, that the resolver cannot import the executor, and that
+`url_launcher` appears in exactly one file.
+
 ---
 
 ## 7. Persistence
