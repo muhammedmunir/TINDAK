@@ -36,6 +36,24 @@ Flutter Android project, approved feature-first structure, baseline tests/build.
 ### M2 Android Share Intent
 Real `text/plain` share from compatible Android apps → TINDAK Share Result.
 
+### M2.1 Explicit Paste Intake
+Added after the M2 physical-device gate found that WhatsApp offers no Android
+share for a text message (PD-033).
+
+```text
+Home ─► [Tampal] ─► explicit clipboard read ─► raw text
+     ─► same safe display model as M2
+```
+
+Clipboard is read only from that press. No detector yet. Both intake paths
+converge on one input type, so M3 never learns where text came from:
+
+```text
+ACTION_SEND ──┐
+              ├─► incoming text ─► M3 engine
+Manual Paste ─┘
+```
+
 ### M3 Phone + URL Understanding
 Normalizer, modular detectors, Malaysian Phone, URL, multi-entity-capable result.
 
@@ -114,3 +132,10 @@ Weak case → **BACKLOG**.
 
 ## 9. Explicit V1 Backlog
 OCR, images, PDFs, voice, iOS, web, family sharing, semantic/vector search, knowledge graph, proactive AI, full expense tracking, advanced warranty/doc management, social features, background clipboard, Accessibility Service, complex multi-device conflict resolution, multiple AI providers.
+
+Added after the M2 gate:
+
+- **Explore Android `ACTION_PROCESS_TEXT` as an additional explicit intake
+  method after V1 validation** (PD-034). Deferred, not rejected: there is no
+  evidence it solves WhatsApp, and its selection behaviour varies across OEMs
+  and apps.

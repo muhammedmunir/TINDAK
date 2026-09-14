@@ -25,7 +25,8 @@ Source App → Android Share → TINDAK full-screen Share Result
 ## 3. Onboarding
 Maximum three lightweight concepts:
 
-1. **SHARE** — “Jumpa sesuatu yang penting? Share ke TINDAK.”
+1. **SHARE** — “Jumpa sesuatu yang penting? Share ke TINDAK, atau salin dan
+   tampal.”
 2. **ACT** — “TINDAK cadangkan apa yang anda boleh lakukan seterusnya.”
 3. **REMEMBER** — “Simpan benda penting supaya senang dicari kemudian.”
 
@@ -33,17 +34,54 @@ CTA: `[Start]`
 
 No forced registration or unnecessary permission wall.
 
+Per-app guidance, when it is shown at all (PD-033):
+
+| App | Guidance |
+|---|---|
+| WhatsApp | Copy → TINDAK → Tampal |
+| Browsers and apps with Android share | Share → TINDAK |
+
+Never tell a user to share a WhatsApp text message. They cannot.
+
+## 3.1 Paste intake
+
+```text
+Any app ─► Copy ─► open TINDAK ─► [Tampal] ─► same result screen as a share
+```
+
+The clipboard is read **only** when the user presses Tampal. Never at launch,
+never on resume, never in the background (ADR-004, PD-033). Android may show its
+own "pasted from clipboard" notice; that transparency is welcome, not something
+to suppress.
+
+Empty or non-text clipboard:
+
+```text
+Tiada teks untuk ditampal.
+```
+
+A quiet line, then the user is still on Home. Nothing else changes.
+
 ## 4. Empty State
 
 ```text
 TINDAK
 
 Jumpa maklumat penting?
-Tekan Share dalam WhatsApp, browser
-atau app lain dan pilih TINDAK.
+Share ke TINDAK, atau salin teks
+dan tampal di sini.
+
+[ Tampal ]
 ```
 
 No complex dashboard.
+
+Two intake paths, both explicit (PD-033). The previous copy told users to share
+a WhatsApp message; physical testing showed WhatsApp offers no Android share for
+a text message, so that instruction was wrong and has been removed.
+
+If the clipboard holds no usable text, fail quietly — a short message, never a
+dramatic error.
 
 ## 5. Phone Share Result
 

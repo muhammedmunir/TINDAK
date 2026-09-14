@@ -6,9 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tindak/app/routes.dart';
 import 'package:tindak/app/theme.dart';
 import 'package:tindak/features/home/home_screen.dart';
-import 'package:tindak/features/share/share_controller.dart';
-import 'package:tindak/features/share/share_result_screen.dart';
-import 'package:tindak/features/share/shared_text.dart';
+import 'package:tindak/features/intake/incoming_text.dart';
+import 'package:tindak/features/intake/intake_controller.dart';
+import 'package:tindak/features/intake/intake_result_screen.dart';
 
 /// The application shell.
 class TindakApp extends ConsumerStatefulWidget {
@@ -22,10 +22,12 @@ class _TindakAppState extends ConsumerState<TindakApp> {
   @override
   void initState() {
     super.initState();
-    // Subscribes to shares and collects the one that launched the app.
+    // Subscribes to Android shares and collects the one that launched the app.
     // Deliberately not awaited: the shell paints immediately and the share
     // arrives when the platform answers.
-    unawaited(ref.read(shareControllerProvider.notifier).start());
+    //
+    // This reads no clipboard, and nothing on a lifecycle path may (ADR-004).
+    unawaited(ref.read(intakeControllerProvider.notifier).start());
   }
 
   @override
@@ -37,29 +39,29 @@ class _TindakAppState extends ConsumerState<TindakApp> {
       darkTheme: AppTheme.dark,
       initialRoute: Routes.home,
       routes: <String, WidgetBuilder>{
-        Routes.home: (_) => const ShareGate(),
+        Routes.home: (_) => const IntakeGate(),
       },
     );
   }
 }
 
-/// Shows the share result when there is one, otherwise Home.
+/// Shows the result when text has arrived, otherwise Home.
 ///
 /// A swap rather than a pushed route, so a second share while a result is on
 /// screen replaces it instead of stacking another screen behind it
 /// (docs/10_ARCHITECTURE.md section 9.3).
-class ShareGate extends ConsumerWidget {
-  const ShareGate({super.key});
+class IntakeGate extends ConsumerWidget {
+  const IntakeGate({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final SharedText? share = ref.watch(shareControllerProvider);
+    final IncomingText? incoming = ref.watch(intakeControllerProvider);
 
-    if (share == null) return const HomeScreen();
+    if (incoming == null) return const HomeScreen();
 
-    return ShareResultScreen(
-      share: share,
-      onClose: () => ref.read(shareControllerProvider.notifier).clear(),
+    return IntakeResultScreen(
+      incoming: incoming,
+      onClose: () => ref.read(intakeControllerProvider.notifier).clear(),
     );
   }
 }

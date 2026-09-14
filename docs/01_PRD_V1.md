@@ -13,9 +13,19 @@ SHARE → UNDERSTAND → ACT → REMEMBER → PROTECT
 ```
 
 ## 2. Input Scope
-**In:** Android Share Intent, `text/plain`, shared text/URLs from compatible apps.
+**In:** two explicit, user-initiated paths (PD-033, ADR-029):
 
-**Out:** images, OCR, PDFs, voice, clipboard monitoring, Accessibility Service, background message/screen reading.
+1. Android Share Intent, `text/plain`, from apps that offer Android sharing.
+2. **Manual Paste** — the user copies text in any app, opens TINDAK and presses
+   Tampal. The clipboard is read only in response to that press.
+
+WhatsApp's message context menu offers no Android share for a plain text
+message, which is why path 2 exists. No document or screen may instruct a user
+to share a WhatsApp text message.
+
+**Out:** images, OCR, PDFs, voice, **clipboard monitoring, polling, or any
+reading of the clipboard that the user did not just ask for**, Accessibility
+Service, background message/screen reading, `ACTION_PROCESS_TEXT` (PD-034).
 
 ## 3. Authentication & Persistence
 - **Guest-first:** account is not required for core use.

@@ -90,8 +90,10 @@ mobile/lib/
 │   ├── config/             build-time config via --dart-define, public values only
 │   └── logging/            no shared content in release logs
 ├── features/
-│   ├── home/               home and empty state (PRD §19)
-│   ├── share/              intent receiver, Share Result screen
+│   ├── home/               home and empty state, Tampal control (PRD §19)
+│   ├── intake/             IncomingText, intake controller, result screen,
+│   │                       clipboard reader — where both paths converge
+│   ├── share/              Android ACTION_SEND channel
 │   ├── understanding/
 │   │   ├── model/          NormalizedContent, DetectedEntity, UnderstandingResult
 │   │   ├── normalizer/
@@ -258,6 +260,35 @@ PULL   rows where updated_at > cursor      ◄── ordered by updated_at
 This is the simplest strategy that is still deterministic (PD-018). Two devices
 editing the same memory in the same second is a lost update — accepted for V1
 and stated in the PRD as out of scope.
+
+---
+
+## 8.5 Intake
+
+Two explicit paths, one type downstream (PD-033, ADR-029).
+
+```text
+ACTION_SEND text/plain ──┐
+                         ├──► IncomingText ──► understanding ──► actions
+Manual Paste ────────────┘     text
+                               source: share | paste
+                               receivedAt
+```
+
+`IncomingText` is what every layer after intake sees. A detector, an action, a
+screen and a Memory row never learn which path the text arrived by — that is the
+point of converging here rather than special-casing WhatsApp downstream.
+
+**The clipboard is read only in direct response to the user pressing Tampal.**
+Not at launch, not on resume, not on a timer, never in the background (ADR-004).
+The reader sits behind an interface so a test can assert how many times it was
+called, which is how that rule is enforced rather than merely stated.
+
+Deduplication differs by path and deliberately so. Share payloads carry a
+monotonic sequence from Android because the same intent can be delivered twice
+(§9). A paste is a discrete user action that cannot arrive twice by accident, so
+it is never deduplicated — and the two counters are kept separate, so a paste
+can never raise the bar high enough to swallow a genuine later share.
 
 ---
 

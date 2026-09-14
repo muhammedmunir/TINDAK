@@ -107,7 +107,10 @@ class MainActivity : FlutterActivity() {
 
         intent.putExtra(EXTRA_CONSUMED, true)
 
-        if (text.isNullOrEmpty()) return null
+        // Blank, not merely empty: a share of nothing but whitespace must not
+        // produce a result screen. Dart enforces the same rule, so the two
+        // layers cannot drift apart.
+        if (text.isNullOrBlank()) return null
 
         sequence += 1
         return mapOf(
