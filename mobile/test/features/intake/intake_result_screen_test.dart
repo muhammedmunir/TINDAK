@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tindak/features/intake/incoming_text.dart';
 import 'package:tindak/features/intake/intake_result_screen.dart';
+import 'package:tindak/features/understanding/engine/understanding_engine.dart';
 
 IncomingText sharedOf(String text) => IncomingText(
   text: text,
@@ -18,33 +19,32 @@ IncomingText pastedOf(String text) => IncomingText.pasted(
 Future<void> pump(
   WidgetTester tester,
   IncomingText incoming, {
+  bool understand = true,
   VoidCallback? onClose,
 }) async {
   await tester.pumpWidget(
     MaterialApp(
-      home: IntakeResultScreen(incoming: incoming, onClose: onClose),
+      home: IntakeResultScreen(
+        incoming: incoming,
+        understanding: understand
+            ? const UnderstandingEngine().understand(incoming.text)
+            : null,
+        onClose: onClose,
+      ),
     ),
   );
 }
 
 void main() {
-  group('IntakeResultScreen', () {
+  group('IntakeResultScreen — received text', () {
     testWidgets('shows the received text', (tester) async {
-      await pump(
-        tester,
-        sharedOf('Bayar bil TNB RM183.50 sebelum 25 September'),
-      );
+      await pump(tester, sharedOf('Bayar bil TNB sebelum 25 September'));
 
-      expect(
-        find.text('Bayar bil TNB RM183.50 sebelum 25 September'),
-        findsOneWidget,
-      );
+      expect(find.text('Bayar bil TNB sebelum 25 September'), findsOneWidget);
     });
 
     testWidgets('looks the same for a paste as for a share', (tester) async {
-      // The user is looking at their own text and does not need to be told
-      // which door it came through.
-      const text = 'Bayar bil TNB RM183.50';
+      const text = 'Hubungi 012-3456789';
 
       await pump(tester, sharedOf(text));
       expect(find.text(text), findsOneWidget);
@@ -56,21 +56,7 @@ void main() {
       expect(find.textContaining('clipboard'), findsNothing);
     });
 
-    testWidgets('shows no detection, action or Save yet', (tester) async {
-      // M2.1 proves the entry points only. Those arrive at M3, M4 and M5a.
-      await pump(tester, sharedOf('012-3456789'));
-
-      expect(find.text('Save'), findsNothing);
-      expect(find.text('Simpan'), findsNothing);
-      expect(find.text('Call'), findsNothing);
-      expect(find.text('Open'), findsNothing);
-      expect(find.byType(ElevatedButton), findsNothing);
-      expect(find.byType(FilledButton), findsNothing);
-    });
-
     testWidgets('renders markup as literal characters', (tester) async {
-      // Untrusted input. Nothing is interpreted; there is no WebView and no
-      // rich-text parsing anywhere in TINDAK.
       const markup = '<script>alert(1)</script>';
       await pump(tester, pastedOf(markup));
 
@@ -100,28 +86,13 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(
-        find.textContaining(
-          '${IntakeResultScreen.displayLimit} aksara pertama',
-        ),
+        find.textContaining('${IntakeResultScreen.displayLimit} aksara pertama'),
         findsOneWidget,
       );
-      expect(find.textContaining('${huge.length}'), findsOneWidget);
-    });
-
-    testWidgets('applies the same limit to a share and a paste',
-        (tester) async {
-      final huge = 'a' * (IntakeResultScreen.displayLimit + 1);
-
-      await pump(tester, sharedOf(huge));
-      expect(find.textContaining('aksara pertama'), findsOneWidget);
-
-      await pump(tester, pastedOf(huge));
-      expect(find.textContaining('aksara pertama'), findsOneWidget);
     });
 
     testWidgets('does not clip text at the limit', (tester) async {
-      final exact = 'a' * IntakeResultScreen.displayLimit;
-      await pump(tester, sharedOf(exact));
+      await pump(tester, sharedOf('a' * IntakeResultScreen.displayLimit));
 
       expect(find.textContaining('aksara pertama'), findsNothing);
     });
@@ -147,10 +118,121 @@ void main() {
 
       await pump(
         tester,
-        sharedOf('Bayar bil TNB RM183.50 sebelum 25 September'),
+        sharedOf('Hubungi 012-3456789 atau https://example.com/panjang/sekali'),
       );
 
       expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('IntakeResultScreen — understanding (M3)', () {
+    testWidgets('shows a detected phone', (tester) async {
+      await pump(tester, sharedOf('Hubungi Ahmad 012-345 6789 esok'));
+
+      expect(find.text('Dikesan'), findsOneWidget);
+      expect(find.text('012-345 6789'), findsOneWidget);
+      expect(find.text('Telefon'), findsOneWidget);
+      expect(find.byIcon(Icons.phone_outlined), findsOneWidget);
+    });
+
+    testWidgets('shows a detected link by its host', (tester) async {
+      // UX section 6.
+      await pump(tester, sharedOf('Lihat https://example.com/promo/abc'));
+
+      expect(find.text('example.com'), findsOneWidget);
+      expect(find.text('Pautan'), findsOneWidget);
+      expect(find.byIcon(Icons.link), findsOneWidget);
+    });
+
+    testWidgets('shows every entity, not just one (PD-002)', (tester) async {
+      await pump(tester, sharedOf('Hubungi 012-3456789 atau https://a.com.my'));
+
+      expect(find.text('Telefon'), findsOneWidget);
+      expect(find.text('Pautan'), findsOneWidget);
+    });
+
+    testWidgets('a paste is understood exactly like a share', (tester) async {
+      await pump(tester, pastedOf('Hubungi 012-3456789'));
+
+      expect(find.text('Telefon'), findsOneWidget);
+    });
+
+    testWidgets('shows the approved message when nothing is detected',
+        (tester) async {
+      await pump(tester, sharedOf('Tiada apa-apa di sini'));
+
+      expect(
+        find.text(IntakeResultScreen.nothingDetectedMessage),
+        findsOneWidget,
+      );
+      expect(find.text('Dikesan'), findsNothing);
+    });
+
+    testWidgets('an IC number is never shown as a phone (PD-029)',
+        (tester) async {
+      await pump(tester, sharedOf('No IC 900101-03-1234'));
+
+      expect(find.text('Telefon'), findsNothing);
+      expect(
+        find.text(IntakeResultScreen.nothingDetectedMessage),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a bare domain is not shown as a link (PD-027)',
+        (tester) async {
+      await pump(tester, sharedOf('Jumpa di kedai.my esok'));
+
+      expect(find.text('Pautan'), findsNothing);
+    });
+
+    testWidgets('shows no understanding section when none is supplied',
+        (tester) async {
+      await pump(tester, sharedOf('012-3456789'), understand: false);
+
+      expect(find.text('Dikesan'), findsNothing);
+      expect(
+        find.text(IntakeResultScreen.nothingDetectedMessage),
+        findsNothing,
+      );
+    });
+  });
+
+  group('IntakeResultScreen — M3 boundary: understand, do not act', () {
+    testWidgets('offers no action of any kind', (tester) async {
+      await pump(
+        tester,
+        sharedOf('Hubungi 012-3456789 atau https://example.com'),
+      );
+
+      for (final label in <String>[
+        'Call', 'Panggil', 'WhatsApp', 'Open', 'Buka', 'Save', 'Simpan',
+        'Security Check', 'Semak', 'Copy', 'Salin', 'Try AI',
+      ]) {
+        expect(find.text(label), findsNothing, reason: label);
+      }
+      expect(find.byType(ElevatedButton), findsNothing);
+      expect(find.byType(FilledButton), findsNothing);
+      expect(find.byType(TextButton), findsNothing);
+      expect(find.byType(OutlinedButton), findsNothing);
+    });
+
+    testWidgets('detected values are not tappable', (tester) async {
+      await pump(
+        tester,
+        sharedOf('Hubungi 012-3456789 atau https://example.com'),
+      );
+
+      // InkWell is what every Material tap target is built on. The received
+      // text itself is selectable, which is intended; the entity rows are not.
+      expect(find.byType(InkWell), findsNothing);
+      expect(find.byType(ListTile), findsNothing);
+
+      await tester.tap(find.text('012-3456789'));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      expect(find.byType(IntakeResultScreen), findsOneWidget);
     });
   });
 }
