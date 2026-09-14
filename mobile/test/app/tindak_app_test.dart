@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tindak/app/tindak_app.dart';
+import 'package:tindak/core/database/tindak_database.dart';
 import 'package:tindak/features/actions/executor/action_runner.dart';
 import 'package:tindak/features/actions/executor/external_launcher.dart';
 import 'package:tindak/features/home/home_screen.dart';
@@ -9,7 +10,11 @@ import 'package:tindak/features/intake/clipboard_reader.dart';
 import 'package:tindak/features/intake/incoming_text.dart';
 import 'package:tindak/features/intake/intake_controller.dart';
 import 'package:tindak/features/intake/intake_result_screen.dart';
+import 'package:tindak/features/memory/memory_detail_screen.dart';
+import 'package:tindak/features/memory/memory_providers.dart';
 import 'package:tindak/features/share/share_channel.dart';
+
+import '../support/test_database.dart';
 
 final class FakeShareChannel implements ShareChannel {
   FakeShareChannel({this.initial});
@@ -64,12 +69,16 @@ final class RecordingLauncher implements ExternalLauncher {
   }
 }
 
-Future<void> pumpApp(
+Future<TindakDatabase> pumpApp(
   WidgetTester tester,
   FakeShareChannel channel, {
   FakeClipboardReader? clipboard,
   RecordingLauncher? launcher,
+  TindakDatabase? database,
 }) async {
+  final db = database ?? openTestDatabase();
+  addTearDown(db.close);
+
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -80,11 +89,13 @@ Future<void> pumpApp(
         externalLauncherProvider.overrideWithValue(
           launcher ?? RecordingLauncher(),
         ),
+        databaseProvider.overrideWithValue(db),
       ],
       child: const TindakApp(),
     ),
   );
   await tester.pumpAndSettle();
+  return db;
 }
 
 /// Drives the app through a full background-and-return cycle.
@@ -537,6 +548,407 @@ void main() {
 
       expect(find.byType(OutlinedButton), findsNothing);
       expect(launcher.launched, isEmpty);
+    });
+  });
+
+  group('memory — M5a', () {
+    Future<int> memoryCount(TindakDatabase db) async =>
+        (await db.select(db.memories).get()).length;
+
+    Future<void> pressSave(WidgetTester tester) async {
+      final save = find.widgetWithText(FilledButton, IntakeResultScreen.saveLabel);
+      await tester.ensureVisible(save);
+      await tester.tap(save);
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> closeResult(WidgetTester tester) async {
+      await tester.tap(find.byIcon(Icons.close));
+      await tester.pumpAndSettle();
+    }
+
+    group('Save is explicit (PD-003)', () {
+      testWidgets('a share, its understanding and an action save nothing',
+          (tester) async {
+        final db = await pumpApp(
+          tester,
+          FakeShareChannel(
+            initial: shareOf(1, 'Hubungi 012-3456789 atau https://a.com.my'),
+          ),
+        );
+
+        await tester.tap(find.widgetWithText(OutlinedButton, 'Panggil'));
+        await tester.pumpAndSettle();
+        cycleLifecycle(tester);
+        await tester.pumpAndSettle();
+
+        expect(await memoryCount(db), 0);
+      });
+
+      testWidgets('a paste saves nothing', (tester) async {
+        final db = await pumpApp(
+          tester,
+          FakeShareChannel(),
+          clipboard: FakeClipboardReader(text: 'Hubungi 012-3456789'),
+        );
+
+        await tester.tap(find.widgetWithText(FilledButton, 'Tampal'));
+        await tester.pumpAndSettle();
+
+        expect(await memoryCount(db), 0);
+      });
+
+      testWidgets('Simpan is offered on the result', (tester) async {
+        await pumpApp(tester, FakeShareChannel(initial: shareOf(1, 'x')));
+
+        expect(
+          find.widgetWithText(FilledButton, IntakeResultScreen.saveLabel),
+          findsOneWidget,
+        );
+      });
+
+      testWidgets('pressing Simpan saves once and says so', (tester) async {
+        final db = await pumpApp(
+          tester,
+          FakeShareChannel(initial: shareOf(1, 'Hubungi 012-3456789')),
+        );
+
+        await pressSave(tester);
+
+        expect(await memoryCount(db), 1);
+        expect(find.text(IntakeGate.savedMessage), findsOneWidget);
+      });
+
+      testWidgets('saving launches nothing', (tester) async {
+        final launcher = RecordingLauncher();
+        await pumpApp(
+          tester,
+          FakeShareChannel(initial: shareOf(1, 'Hubungi 012-3456789')),
+          launcher: launcher,
+        );
+
+        await pressSave(tester);
+
+        expect(launcher.launched, isEmpty);
+      });
+
+      testWidgets('plain text with nothing detected can be saved',
+          (tester) async {
+        final db = await pumpApp(
+          tester,
+          FakeShareChannel(initial: shareOf(1, 'Beli susu dan roti')),
+        );
+
+        await pressSave(tester);
+
+        expect(await memoryCount(db), 1);
+      });
+
+      testWidgets('multi-entity text saves every entity', (tester) async {
+        final db = await pumpApp(
+          tester,
+          FakeShareChannel(
+            initial: shareOf(1, '012-3456789, 03-1234 5678, https://a.com.my'),
+          ),
+        );
+
+        await pressSave(tester);
+
+        expect(await db.select(db.memoryEntities).get(), hasLength(3));
+      });
+
+      testWidgets('two separate presses are two memories', (tester) async {
+        final db = await pumpApp(
+          tester,
+          FakeShareChannel(initial: shareOf(1, 'Hubungi 012-3456789')),
+        );
+
+        await pressSave(tester);
+        await pressSave(tester);
+
+        expect(await memoryCount(db), 2);
+      });
+
+      testWidgets('lifecycle and rotation after saving do not save again',
+          (tester) async {
+        final db = await pumpApp(
+          tester,
+          FakeShareChannel(initial: shareOf(1, 'Hubungi 012-3456789')),
+        );
+        await pressSave(tester);
+
+        for (var i = 0; i < 3; i++) {
+          cycleLifecycle(tester);
+          await tester.pumpAndSettle();
+        }
+        tester.view.physicalSize = const Size(2400, 1080);
+        addTearDown(tester.view.resetPhysicalSize);
+        await tester.pumpAndSettle();
+
+        expect(await memoryCount(db), 1);
+      });
+
+      testWidgets('a second share arriving does not save the first',
+          (tester) async {
+        final channel = FakeShareChannel(initial: shareOf(1, 'first'));
+        final db = await pumpApp(tester, channel);
+
+        channel.emit(shareOf(2, 'second'));
+        await tester.pumpAndSettle();
+
+        expect(await memoryCount(db), 0);
+      });
+    });
+
+    group('Memory list', () {
+      testWidgets('empty Memory shows the empty state', (tester) async {
+        await pumpApp(tester, FakeShareChannel());
+
+        expect(find.text('Jumpa maklumat penting?'), findsOneWidget);
+        expect(find.text(HomeScreen.searchHint), findsNothing);
+      });
+
+      testWidgets('a saved item appears after closing the result',
+          (tester) async {
+        await pumpApp(
+          tester,
+          FakeShareChannel(initial: shareOf(1, 'Bayar bil TNB 012-3456789')),
+        );
+        await pressSave(tester);
+
+        await closeResult(tester);
+
+        expect(find.text('Bayar bil TNB 012-3456789'), findsOneWidget);
+        expect(find.text('Jumpa maklumat penting?'), findsNothing);
+      });
+
+      testWidgets('shows the device-only notice (PD-019)', (tester) async {
+        await pumpApp(tester, FakeShareChannel(initial: shareOf(1, 'x')));
+        await pressSave(tester);
+        await closeResult(tester);
+
+        expect(find.text(HomeScreen.deviceOnlyNotice), findsOneWidget);
+        expect(find.textContaining('Sign in'), findsNothing);
+      });
+
+      testWidgets('Tampal is still reachable once Memory has items',
+          (tester) async {
+        await pumpApp(tester, FakeShareChannel(initial: shareOf(1, 'x')));
+        await pressSave(tester);
+        await closeResult(tester);
+
+        expect(find.byTooltip('Tampal'), findsOneWidget);
+      });
+
+      testWidgets('memories survive a restart of the app', (tester) async {
+        final channel = FakeShareChannel(initial: shareOf(1, 'Simpan saya'));
+        final db = openTestDatabase();
+        await pumpApp(tester, channel, database: db);
+        await pressSave(tester);
+
+        // Throw away the whole widget and provider tree, then start again on
+        // the same database — what a relaunch does.
+        await tester.pumpWidget(const SizedBox());
+        await pumpApp(tester, FakeShareChannel(), database: db);
+
+        expect(find.text('Simpan saya'), findsOneWidget);
+      });
+
+      testWidgets('an unreadable database shows a quiet message',
+          (tester) async {
+        final db = openTestDatabase();
+        await db.customStatement('PRAGMA foreign_keys = OFF');
+        await db.customStatement('DROP TABLE memory_entities');
+        await db.customStatement('DROP TABLE memories');
+
+        await pumpApp(tester, FakeShareChannel(), database: db);
+
+        expect(find.text(HomeScreen.unreadableMessage), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      });
+    });
+
+    group('search', () {
+      Future<void> seed(WidgetTester tester) async {
+        final channel = FakeShareChannel(
+          initial: shareOf(1, 'Hubungi saya 012-345 6789'),
+        );
+        await pumpApp(tester, channel);
+        await pressSave(tester);
+        channel.emit(shareOf(2, 'Bayar bil di https://www.tnb.com.my'));
+        await tester.pumpAndSettle();
+        await pressSave(tester);
+        await closeResult(tester);
+      }
+
+      testWidgets('filters by original text', (tester) async {
+        await seed(tester);
+
+        await tester.enterText(find.byType(TextField), 'Bayar');
+        await tester.pumpAndSettle();
+
+        expect(find.text('Bayar bil di https://www.tnb.com.my'), findsOneWidget);
+        expect(find.text('Hubungi saya 012-345 6789'), findsNothing);
+      });
+
+      testWidgets('finds a phone however it is typed', (tester) async {
+        await seed(tester);
+
+        await tester.enterText(find.byType(TextField), '0123456789');
+        await tester.pumpAndSettle();
+
+        expect(find.text('Hubungi saya 012-345 6789'), findsOneWidget);
+        expect(find.text('Bayar bil di https://www.tnb.com.my'), findsNothing);
+      });
+
+      testWidgets('no match shows the no-results message', (tester) async {
+        await seed(tester);
+
+        await tester.enterText(find.byType(TextField), 'tiada langsung');
+        await tester.pumpAndSettle();
+
+        expect(find.text(HomeScreen.noMatchesMessage), findsOneWidget);
+        // The search field stays, so the user can change the query.
+        expect(find.byType(TextField), findsOneWidget);
+      });
+
+      testWidgets('clearing the search shows everything again', (tester) async {
+        await seed(tester);
+        await tester.enterText(find.byType(TextField), 'tiada langsung');
+        await tester.pumpAndSettle();
+
+        await tester.tap(find.byTooltip('Kosongkan'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('Hubungi saya 012-345 6789'), findsOneWidget);
+        expect(find.text('Bayar bil di https://www.tnb.com.my'), findsOneWidget);
+      });
+    });
+
+    group('detail and delete', () {
+      Future<TindakDatabase> seedAndOpen(WidgetTester tester) async {
+        final channel = FakeShareChannel(
+          initial: shareOf(1, 'Simpan yang ini 012-3456789'),
+        );
+        final db = await pumpApp(tester, channel);
+        await pressSave(tester);
+        channel.emit(shareOf(2, 'Dan yang ini juga'));
+        await tester.pumpAndSettle();
+        await pressSave(tester);
+        await closeResult(tester);
+
+        await tester.tap(find.text('Simpan yang ini 012-3456789'));
+        await tester.pumpAndSettle();
+        return db;
+      }
+
+      testWidgets('opens the correct record', (tester) async {
+        await seedAndOpen(tester);
+
+        expect(find.byType(MemoryDetailScreen), findsOneWidget);
+        expect(find.text('Simpan yang ini 012-3456789'), findsOneWidget);
+        expect(find.text('Dan yang ini juga'), findsNothing);
+        expect(find.text(MemoryDetailScreen.onDeviceStatus), findsOneWidget);
+      });
+
+      testWidgets('a saved number offers the same validated actions',
+          (tester) async {
+        final launcher = RecordingLauncher();
+        final channel = FakeShareChannel(initial: shareOf(1, 'Hubungi 012-3456789'));
+        await pumpApp(tester, channel, launcher: launcher);
+        await pressSave(tester);
+        await closeResult(tester);
+        await tester.tap(find.text('Hubungi 012-3456789'));
+        await tester.pumpAndSettle();
+
+        expect(launcher.launched, isEmpty);
+        await tester.tap(find.widgetWithText(OutlinedButton, 'Panggil'));
+        await tester.pumpAndSettle();
+
+        expect(launcher.launched, <String>['tel:+60123456789']);
+      });
+
+      testWidgets('delete asks first; cancelling keeps the item',
+          (tester) async {
+        final db = await seedAndOpen(tester);
+
+        await tester.tap(find.widgetWithText(OutlinedButton, 'Padam'));
+        await tester.pumpAndSettle();
+        expect(find.text(MemoryDetailScreen.confirmTitle), findsOneWidget);
+        expect(find.text(MemoryDetailScreen.confirmBody), findsOneWidget);
+
+        await tester.tap(find.text(MemoryDetailScreen.cancelLabel));
+        await tester.pumpAndSettle();
+
+        expect(await memoryCount(db), 2);
+        expect(find.byType(MemoryDetailScreen), findsOneWidget);
+      });
+
+      testWidgets('confirming deletes the correct item and returns to Memory',
+          (tester) async {
+        final db = await seedAndOpen(tester);
+
+        await tester.tap(find.widgetWithText(OutlinedButton, 'Padam'));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(
+            of: find.byType(AlertDialog),
+            matching: find.text(MemoryDetailScreen.deleteLabel),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(await memoryCount(db), 1);
+        expect(find.byType(MemoryDetailScreen), findsNothing);
+        expect(find.text('Simpan yang ini 012-3456789'), findsNothing);
+        expect(find.text('Dan yang ini juga'), findsOneWidget);
+        expect(find.text(MemoryDetailScreen.deletedMessage), findsOneWidget);
+      });
+
+      testWidgets('a deleted item no longer appears in search', (tester) async {
+        await seedAndOpen(tester);
+        await tester.tap(find.widgetWithText(OutlinedButton, 'Padam'));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.descendant(
+            of: find.byType(AlertDialog),
+            matching: find.text(MemoryDetailScreen.deleteLabel),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.enterText(find.byType(TextField), '0123456789');
+        await tester.pumpAndSettle();
+
+        expect(find.text(HomeScreen.noMatchesMessage), findsOneWidget);
+      });
+
+      testWidgets('offers no Trash, Archive or Restore', (tester) async {
+        await seedAndOpen(tester);
+
+        for (final label in <String>[
+          'Tong sampah', 'Trash', 'Arkib', 'Archive', 'Pulihkan', 'Restore',
+        ]) {
+          expect(find.text(label), findsNothing, reason: label);
+        }
+      });
+
+      testWidgets('a share arriving on the detail screen is shown',
+          (tester) async {
+        final channel = FakeShareChannel(initial: shareOf(1, 'Simpan ini'));
+        await pumpApp(tester, channel);
+        await pressSave(tester);
+        await closeResult(tester);
+        await tester.tap(find.text('Simpan ini'));
+        await tester.pumpAndSettle();
+        expect(find.byType(MemoryDetailScreen), findsOneWidget);
+
+        channel.emit(shareOf(2, 'Baru sampai'));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(MemoryDetailScreen), findsNothing);
+        expect(find.text('Baru sampai'), findsOneWidget);
+      });
     });
   });
 }

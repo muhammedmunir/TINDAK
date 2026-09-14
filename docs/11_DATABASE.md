@@ -218,58 +218,117 @@ from another device's pull.
 
 ## 3. Local — SQLite (Drift)
 
-Same tables, same ids, same `deleted_at`, plus the columns that only exist on a
-device.
+**As built at M5a, schema version 1.** Source of truth is
+`mobile/lib/core/database/tindak_database.dart`; its exact shape is pinned by
+`mobile/test/core/database/schema_test.dart`, so an accidental change fails a
+test instead of surfacing as a migration problem on a phone.
 
 ```sql
--- memories (local)
-id            TEXT PRIMARY KEY,
-content       TEXT NOT NULL,
-source_app    TEXT,
-created_at    INTEGER NOT NULL,      -- epoch millis, UTC
-updated_at    INTEGER NOT NULL,      -- local write time; server value after sync
-deleted_at    INTEGER,
-
-owner_user_id TEXT,                  -- NULL = guest-owned (§10.3 of ARCHITECTURE)
-sync_status   TEXT NOT NULL          -- 'local_only' | 'pending' | 'synced'
-              CHECK (sync_status IN ('local_only','pending','synced'))
-```
-
-`memory_entities` and `reminders` mirror this. `security_scans` and
-`usage_events` have no local table — neither is needed offline.
-
-### 3.1 Search
-
-```sql
-CREATE VIRTUAL TABLE memories_fts USING fts5(
-  content,
-  content='memories',
-  content_rowid='rowid',
-  tokenize='unicode61'
+CREATE TABLE memories (
+  id             TEXT    NOT NULL PRIMARY KEY,   -- client UUIDv4
+  content        TEXT    NOT NULL,               -- original text, verbatim
+  intake_source  TEXT    NOT NULL,               -- 'share' | 'paste'  (PD-033)
+  source_app     TEXT,                           -- never trusted
+  created_at     INTEGER NOT NULL,               -- epoch ms, UTC
+  updated_at     INTEGER NOT NULL,
+  deleted_at     INTEGER,                        -- future tombstone; unused in M5a
+  owner_user_id  TEXT,                           -- NULL = guest-owned
+  sync_status    TEXT    NOT NULL,               -- always 'local_only' in M5a
+  CHECK (sync_status IN ('local_only', 'pending', 'synced')),
+  CHECK (intake_source IN ('share', 'paste')),
+  CHECK (length(id) = 36),
+  CHECK (owner_user_id IS NOT NULL OR sync_status = 'local_only'),
+  CHECK (updated_at >= created_at)
 );
+CREATE INDEX memories_visible_created_idx ON memories (deleted_at, created_at);
+
+CREATE TABLE memory_entities (
+  id                TEXT    NOT NULL PRIMARY KEY,
+  memory_id         TEXT    NOT NULL REFERENCES memories (id) ON DELETE CASCADE,
+  type              TEXT    NOT NULL,            -- not CHECK-constrained, see below
+  raw_value         TEXT    NOT NULL,            -- from normalised text
+  normalized_value  TEXT    NOT NULL,            -- E.164 / lowercased-host URL
+  search_value      TEXT    NOT NULL,            -- local-only, derived
+  confidence        REAL    NOT NULL,
+  start_offset      INTEGER NOT NULL,
+  end_offset        INTEGER NOT NULL,
+  created_at        INTEGER NOT NULL,
+  CHECK (confidence >= 0 AND confidence <= 1),
+  CHECK (start_offset >= 0 AND end_offset > start_offset)
+);
+CREATE INDEX memory_entities_memory_idx ON memory_entities (memory_id);
+CREATE INDEX memory_entities_search_idx ON memory_entities (search_value);
 ```
 
-Kept in step with three triggers (insert, update, delete). `unicode61` for the
-same reason Postgres uses `simple`.
+`PRAGMA foreign_keys = ON` is set before every open; SQLite leaves it off by
+default, and without it deleting a memory would orphan its searchable entities.
 
-A search runs two queries and unions the ids:
+### 3.0.1 Decisions made at the M5a schema checkpoint
+
+| Decision | Why |
+|---|---|
+| `owner_user_id IS NOT NULL OR sync_status = 'local_only'` | The database itself, not app code, guarantees a guest row can never claim to be synced (PD-016). |
+| `intake_source` column | Records which explicit path the text came by (PD-033), for M5b and analytics later. |
+| `entities.type` has no CHECK | SQLite cannot alter a CHECK in place. M6 adds money and date without rebuilding the table; unknown types are skipped on read. |
+| No `user_id` on local entities | Ownership follows the memory. Postgres keeps it for RLS; locally it would be a second copy to keep consistent. |
+| `search_value` column on entities | See §3.1. Derived, local-only, never synced. |
+| No `sync_meta` table yet | It holds only M5b state. Adding a table is a trivial migration; adding columns to populated tables is the expensive kind, and none are deferred. |
+| Database in `core/database/`, not `features/memory/` | Reminders (M7) and sync (M5b) share it. |
+| File in the app's private support directory | Excluded from backup and device transfer by the M1 manifest (ADR-021). |
+| `onUpgrade` throws | No migration exists yet. An unknown version jump is refused rather than guessed at, because guessing with a user's only copy of their data is what a migration must never do. |
+
+`reminders` arrives at M7. `security_scans` and `usage_events` have no local
+table — neither is needed offline.
+
+### 3.1 Search — as built (proposed amendment to ADR-015, ADR-030)
+
+FTS5 was specified. **M5a uses `LIKE` instead**, and this is recorded as a
+proposed amendment rather than silently accepted:
 
 ```text
-1. memories_fts MATCH ?                      -> original text  (PRD §10)
-2. memory_entities.normalized_value LIKE ?%  -> entity values  (PRD §10)
+memory matches when:
+  content LIKE %query%                                   original text
+  OR an entity's search_value LIKE %lowercased query%    entity values
+  OR (query has ≥3 digits AND search_value LIKE %digits%) numbers however typed
 ```
 
-Both filtered by `deleted_at IS NULL` and by visible ownership. Ordered by
-`created_at desc`. No relevance ranking in V1 — recency is what a user expects
-from a memory list.
+`search_value` for a phone stored as `+60123456789` is
+`0123456789 60123456789`, so `012-345 6789`, `0123456789`, `+60123456789` and
+`3456789` all find it. `%`, `_` and `\` in a query are escaped and literal.
 
-### 3.2 `sync_meta`
+Why not FTS5:
+
+- **Phone numbers.** FTS5's `unicode61` tokeniser splits `012-345 6789` into
+  three tokens. A person searching `0123456789` would find nothing.
+- **Partial words.** FTS5 matches token prefixes. `LIKE` matches anywhere,
+  which is what a person expects typing part of a word in Malay or English.
+- **Moving parts.** FTS5 needs a virtual table and three synchronisation
+  triggers, and a trigger bug silently desynchronises search from the data.
+- **Scale.** A personal memory list is hundreds to low thousands of rows. A
+  linear scan at that size is well under a frame.
+
+Revisit if real users reach sizes where search is measurably slow.
+
+Ordered by `created_at desc, id desc`. No relevance ranking — recency is what a
+user expects from a memory list, and it keeps search deterministic (PD-004).
+
+### 3.1.1 Delete — as built
+
+A `local_only` row is removed outright; its entities go by cascade. No
+tombstone is written, because a row that never left the device has no other
+copy to inform. A row with any other sync status is **refused**, not hard
+deleted: hard deleting a synced row would let a later sync resurrect it. That
+tombstone path is M5b's work (PD-021). Every read ignores rows with
+`deleted_at` set, which the schema tests verify now.
+
+### 3.2 `sync_meta` (M5b)
 
 ```sql
 key TEXT PRIMARY KEY, value TEXT
 ```
 
 Holds `pull_cursor`, `last_sync_at`, and `last_sync_error`. One row per key.
+Not created at M5a.
 
 ### 3.3 Which rows are visible
 

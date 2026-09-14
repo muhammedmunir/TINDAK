@@ -88,6 +88,7 @@ mobile/lib/
 │   ├── failure/            typed failures
 │   ├── clock/              injectable clock (date detection is time-sensitive)
 │   ├── config/             build-time config via --dart-define, public values only
+│   ├── database/           Drift schema and migrations, shared by memory, sync, reminders
 │   └── logging/            no shared content in release logs
 ├── features/
 │   ├── home/               home and empty state, Tampal control (PRD §19)
@@ -103,7 +104,7 @@ mobile/lib/
 │   │   ├── model/          ActionDescriptor
 │   │   ├── resolver/       pure: entity -> available actions
 │   │   └── executor/       impure: launches Android intents
-│   ├── memory/             repository, local DAO, cloud DAO, screens
+│   ├── memory/             repository, search, saver, list and detail screens
 │   ├── reminders/
 │   ├── security/           local URL heuristics + reputation client
 │   ├── ai/                 consent gate + AI gateway client
@@ -257,7 +258,7 @@ into (ADR-013, ADR-014 proposed below).
 | Isar | Fast with built-in full-text index, but upstream maintenance has been unstable and the project depends on a community fork. Too much risk for the store that holds the user's only copy of guest data. Rejected. |
 | sqflite | Works, but untyped SQL strings and no first-class migration tooling. Drift is a thin layer over the same engine with materially better testability. Rejected. |
 
-Cost: `drift`, `drift_dev`, `build_runner`, `sqlite3_flutter_libs`.
+Cost: `drift`, `drift_dev`, `build_runner`, `sqlite3_flutter_libs`, `path_provider`. As built, see §7.4.
 
 ### 7.3 Ownership and provenance
 
@@ -276,6 +277,48 @@ Row IDs are **client-generated UUIDv4**, assigned at Save time, never
 reassigned. Migration at sign-in (PD-016) is then a metadata update
 (`owner_user_id = uid`, `sync_status = pending`) and a push — not a copy, not a
 re-key, no duplicate risk if it is interrupted.
+
+### 7.4 As built at M5a
+
+```text
+[Simpan] ─► MemorySaver ─► MemoryRepository ─► Drift ─► SQLite file
+                                  │
+Home / Memory ◄── watch(query) ◄──┘        core/database/tindak_database.dart
+Detail        ◄── findById
+Delete        ──► delete (hard, local_only only)
+```
+
+- **Save runs only from the Simpan button's `onPressed`.** Not on share, paste,
+  detection, action, render or resume (PD-003). Tests assert zero rows after
+  each of those.
+- **Every completed press is a new memory.** Nothing is deduplicated. Only a
+  press arriving while the previous write is still running is ignored — a
+  double tap racing the database, not a second decision.
+- **The original text is stored verbatim**, invisible characters included.
+  Normalisation stays a detection concern; entity values on the entity rows are
+  already clean (PD-032).
+- **The UI never sees a Drift row.** Generated rows print every field in
+  `toString`; `MemoryRecord` does not print content. Repository failures log
+  the operation and the error's type, never the error, because a SQLite error
+  can quote the statement.
+- **A share or paste arriving while a Memory detail is open** pops back to the
+  root, so the user sees what they sent instead of it landing behind the
+  detail screen.
+
+**Dependency deviations, both recorded:**
+
+- `drift_flutter` is **not** used. Its current release pulls in
+  `sqlcipher_flutter_libs`, and ADR-021 says no SQLCipher in V1. The database is
+  opened with `drift` + `path_provider` directly instead.
+- Drift is pinned to **2.31** with `drift_dev` 2.31.0. Flutter 3.41 pins `meta`
+  1.17.0, and every newer `drift_dev` needs an analyzer requiring `meta` 1.18 or
+  a `test` version `flutter_test` rejects. That also holds `sqlite3` at 2.9.x,
+  which does not bundle SQLite on its own — so `sqlite3_flutter_libs` 0.5.42
+  bundles it into the APK, and unit tests on Windows use the `winsqlite3.dll`
+  Windows ships. Revisit with the toolchain (ENV-1).
+
+Search is `LIKE`, not FTS5 — proposed as ADR-030, reasoning in
+`11_DATABASE.md` §3.1.
 
 ---
 
@@ -398,7 +441,7 @@ Every entry needs a reason (AI Rule 6). Nothing else ships in V1.
 | Package | Purpose | Why this one |
 |---|---|---|
 | `flutter_riverpod` | state | §10 |
-| `drift`, `sqlite3_flutter_libs` | local store | §7.2 |
+| `drift`, `sqlite3_flutter_libs`, `path_provider` | local store | §7.2, §7.4 |
 | `supabase_flutter` | cloud backend, auth | ADR-001 |
 | `flutter_local_notifications` | reminders | ADR-008; the only maintained option |
 | `timezone` | correct local fire time across DST/timezone change | required by the above for scheduled notifications |

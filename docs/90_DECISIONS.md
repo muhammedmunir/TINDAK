@@ -440,6 +440,28 @@ from.
 
 **Status:** Accepted — CEO and Product Direction, 2026-09-10.
 
+## ADR-030 — Proposed amendment to ADR-015: Memory search uses LIKE, not FTS5
+**Decision (proposed):** Local Memory search matches original text with
+`LIKE %query%`, and entity values through a derived, lowercased
+`search_value` column that holds the forms a person would type — for a phone,
+both the national and international digits. Queries of three or more digits are
+also matched as numbers. Wildcards in the query are escaped.
+
+**Why:** FTS5's tokeniser splits `012-345 6789` into three tokens, so searching
+`0123456789` — how Malaysians write a number — would find nothing. FTS5 also
+matches only token prefixes, and needs a virtual table kept in step by triggers
+that can silently desynchronise. A personal memory list is small enough that a
+linear scan is well under a frame.
+
+**What does not change:** Drift over SQLite (ADR-015) stands. Search stays
+local, deterministic and non-AI (PD-004).
+
+**Revisit:** if real usage reaches sizes where search is measurably slow.
+
+**Detail:** `11_DATABASE.md` §3.1.
+**Status:** **Proposed — implemented at M5a, needs CEO approval.** Recorded
+rather than silently accepted, because ADR-015's text names FTS5.
+
 ---
 
 # Part 4 — Open, awaiting decision

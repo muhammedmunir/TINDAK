@@ -12,13 +12,30 @@ environment:
 # Every dependency needs a clear technical reason (AI Rule 6). The full list and
 # its justification is in docs/10_ARCHITECTURE.md section 12; packages arrive at
 # the milestone that needs them, not before.
+#
+# Drift versions are pinned below the latest on purpose. Flutter 3.41 pins
+# `meta` 1.17.0; every drift_dev from 2.32.1 needs an analyzer that requires
+# meta 1.18, or a `test` version flutter_test cannot accept. 2.31.0 is the
+# newest pair that resolves. Revisit when the Flutter toolchain moves (ENV-1).
 dependencies:
+  # Local persistence for Memory (ADR-015, M5a). Real SQL, explicit versioned
+  # migrations, and it runs in plain unit tests on the Dart VM.
+  drift: '>=2.31.0 <2.32.0'
+
   flutter:
     sdk: flutter
 
   # State management (ADR-016). Plain providers, no code generation, so
   # application logic is testable without a BuildContext or WidgetTester.
   flutter_riverpod: ^3.3.2
+
+  # Locates the app's private support directory for the database file (M5a).
+  path_provider: ^2.1.5
+
+  # Bundles a current SQLite into the APK (M5a). Android does not expose its own
+  # SQLite to apps. Kept below 0.6.0, an end-of-life shell for the sqlite3 3.x
+  # line this toolchain cannot use. No SQLCipher (ADR-021).
+  sqlite3_flutter_libs: '>=0.5.42 <0.6.0'
 
   # Hands Call, WhatsApp and Open to the apps that do them (M4). The only
   # maintained bridge to Android's ACTION_VIEW, and it needs no permission:
@@ -27,10 +44,22 @@ dependencies:
   # ActionUriBuilder first.
   url_launcher: ^6.3.2
 
+  # Client-generated UUIDv4 row ids (docs/10_ARCHITECTURE.md section 7.3), so a
+  # memory keeps its identity when M5b syncs it.
+  uuid: ^4.6.0
+
 dev_dependencies:
+  # Generates Drift's typed table and query code. Build-time only.
+  build_runner: '>=2.15.0 <2.15.2'
+  drift_dev: 2.31.0
+
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
+
+  # Tests only: points the sqlite3 package at the host's SQLite library, since
+  # sqlite3_flutter_libs bundles SQLite for devices, not for the test runner.
+  sqlite3: '>=2.9.4 <3.0.0'
 
 flutter:
   uses-material-design: true

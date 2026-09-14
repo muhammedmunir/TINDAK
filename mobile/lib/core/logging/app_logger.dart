@@ -14,6 +14,14 @@ import 'package:flutter/foundation.dart';
 final class AppLogger {
   const AppLogger(this.name);
 
+  /// Receives every message that would be emitted, in tests only.
+  ///
+  /// Exists so a test can capture what TINDAK logs on a failure path and prove
+  /// that no saved text appears in it — a rule that is otherwise only a
+  /// comment.
+  @visibleForTesting
+  static void Function(String name, String message)? testSink;
+
   /// The subsystem this logger belongs to, e.g. `sync` or `share`.
   final String name;
 
@@ -43,6 +51,7 @@ final class AppLogger {
     Object? error,
     StackTrace? stackTrace,
   }) {
+    testSink?.call(name, '$message ${error ?? ''}');
     developer.log(
       message,
       name: 'tindak.$name',
