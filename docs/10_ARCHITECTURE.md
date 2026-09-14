@@ -153,10 +153,21 @@ and the character range `[start, end)` in the normalized text. The range is what
 makes overlap resolution possible and lets the UI highlight matches later.
 
 **Overlap rule.** A URL contains digits that look like a phone number and dots
-that look like a date. The engine resolves by span: if entity A's span is fully
-inside entity B's span and B has higher confidence, A is dropped. Equal-length
-overlaps keep the higher confidence, ties broken by a fixed detector priority
-(`url > phone > money > date`). Deterministic, no heuristics.
+that look like a date. The engine resolves by span:
+
+- An entity **strictly inside** another is part of it and is dropped,
+  **regardless of confidence**.
+- Otherwise, overlapping entities keep the higher confidence; ties go to a
+  fixed detector priority (`url > phone > money > date`), then the earlier
+  start.
+
+Deterministic, no heuristics.
+
+*Refined during M3.* The locked wording dropped a contained entity only when the
+container had higher confidence. Implementation showed the flaw: in
+`www.example.com/012-3456789` the phone scores 0.95 and a `www.` link only 0.90,
+so the phone would have survived as a separate entity inside the link. Digits
+inside a link belong to the link. Containment now decides on its own.
 
 **Ranking, not discarding.** `primary` exists only to decide which action the UI
 emphasises. Every meaningful entity is retained (PD-002).

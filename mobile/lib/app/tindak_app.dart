@@ -9,6 +9,7 @@ import 'package:tindak/features/home/home_screen.dart';
 import 'package:tindak/features/intake/incoming_text.dart';
 import 'package:tindak/features/intake/intake_controller.dart';
 import 'package:tindak/features/intake/intake_result_screen.dart';
+import 'package:tindak/features/intake/intake_understanding.dart';
 
 /// The application shell.
 class TindakApp extends ConsumerStatefulWidget {
@@ -61,6 +62,7 @@ class IntakeGate extends ConsumerWidget {
 
     return IntakeResultScreen(
       incoming: incoming,
+      understanding: ref.watch(intakeUnderstandingProvider),
       onClose: () => ref.read(intakeControllerProvider.notifier).clear(),
     );
   }

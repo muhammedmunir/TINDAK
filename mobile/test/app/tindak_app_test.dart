@@ -131,6 +131,32 @@ void main() {
       expect(find.text('Bayar bil TNB RM183.50'), findsOneWidget);
     });
 
+    testWidgets('a shared message is understood end to end', (tester) async {
+      final channel = FakeShareChannel(
+        initial: shareOf(1, 'Hubungi 012-3456789 atau https://example.com'),
+      );
+
+      await pumpApp(tester, channel);
+
+      expect(find.text('Dikesan'), findsOneWidget);
+      expect(find.text('012-3456789'), findsOneWidget);
+      expect(find.text('example.com'), findsOneWidget);
+    });
+
+    testWidgets('a second share is understood afresh', (tester) async {
+      final channel = FakeShareChannel(initial: shareOf(1, 'Hubungi 012-3456789'));
+      await pumpApp(tester, channel);
+
+      channel.emit(shareOf(2, 'Tiada apa-apa'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Telefon'), findsNothing);
+      expect(
+        find.text(IntakeResultScreen.nothingDetectedMessage),
+        findsOneWidget,
+      );
+    });
+
     testWidgets('a share while running opens the result screen',
         (tester) async {
       final channel = FakeShareChannel();
@@ -254,6 +280,17 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(clipboard.reads, 1);
+    });
+
+    testWidgets('pasted text is understood', (tester) async {
+      final clipboard = FakeClipboardReader(text: 'Hubungi 012-3456789');
+      await pumpApp(tester, FakeShareChannel(), clipboard: clipboard);
+
+      await tester.tap(find.widgetWithText(FilledButton, 'Tampal'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Dikesan'), findsOneWidget);
+      expect(find.text('Telefon'), findsOneWidget);
     });
 
     testWidgets('receiving a share does not read the clipboard',
