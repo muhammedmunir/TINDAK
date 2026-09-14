@@ -93,7 +93,7 @@ Hubungi saya 012-3456789
 Detected
 📞 012-3456789
 
-[Call] [WhatsApp]
+[Panggil] [WhatsApp]
 
 [Save]
 ```
@@ -110,7 +110,7 @@ https://example.com
 Detected
 🔗 example.com
 
-[Open] [Security Check]
+[Buka] [Security Check]
 
 [Save]
 ```
@@ -368,7 +368,7 @@ This does not mean the link is safe.
 Failure is never treated as a clean result.
 
 ## 24. External Actions
-Call/WhatsApp/Open launch the appropriate Android destination. TINDAK does not force-close. Returning should preserve sensible context where practical.
+Panggil/WhatsApp/Buka launch the appropriate Android destination. TINDAK does not force-close. Returning should preserve sensible context where practical.
 
 ## 25. Settings
 Initial categories may include:

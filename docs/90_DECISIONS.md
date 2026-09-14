@@ -212,6 +212,25 @@ solves WhatsApp, and its selection behaviour varies across OEMs and apps.
 Backlog: *Explore Android `ACTION_PROCESS_TEXT` as an additional explicit
 intake method after V1 validation.* Complexity is not added on a possibility.
 
+## PD-035…PD-037 — added by the M4 Product Direction review
+
+### PD-035 — Calling opens the dialer only
+`Panggil` opens the system dialer pre-filled with the normalised number. TINDAK
+never places a call, never requests `CALL_PHONE`, and the user always confirms
+the call in the dialer. Locked for V1.
+
+### PD-036 — WhatsApp is offered for Malaysian mobile numbers only
+No WhatsApp control for a landline. Revisit only with evidence of a real use
+case; do not generalise.
+
+### PD-037 — Malay action labels
+User-facing action labels are Malay for V1 consistency: `Panggil`, `Buka`.
+`WhatsApp` is a brand name and stays unchanged. Internal identifiers are not
+translated.
+
+Approved failure copy: **"Tindakan ini tidak dapat dibuka pada peranti ini."** —
+short, does not blame the user, and does not claim a cause TINDAK cannot know.
+
 ---
 
 # Part 3 — Architecture Decisions (Accepted at Architecture Lock, 2026-09-10)

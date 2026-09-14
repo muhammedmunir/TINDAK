@@ -205,21 +205,36 @@ void main() {
     testWidgets('a mobile offers Call and WhatsApp', (tester) async {
       await pump(tester, sharedOf('012-3456789'), onAction: (_) {});
 
-      expect(find.widgetWithText(OutlinedButton, 'Call'), findsOneWidget);
+      expect(find.widgetWithText(OutlinedButton, 'Panggil'), findsOneWidget);
       expect(find.widgetWithText(OutlinedButton, 'WhatsApp'), findsOneWidget);
+    });
+
+    testWidgets('action labels are Malay; WhatsApp keeps its brand name (PD-037)',
+        (tester) async {
+      await pump(
+        tester,
+        sharedOf('012-3456789 https://example.com'),
+        onAction: (_) {},
+      );
+
+      expect(find.text('Panggil'), findsOneWidget);
+      expect(find.text('Buka'), findsOneWidget);
+      expect(find.text('WhatsApp'), findsOneWidget);
+      expect(find.text('Call'), findsNothing);
+      expect(find.text('Open'), findsNothing);
     });
 
     testWidgets('a landline offers Call only', (tester) async {
       await pump(tester, sharedOf('03-1234 5678'), onAction: (_) {});
 
-      expect(find.widgetWithText(OutlinedButton, 'Call'), findsOneWidget);
+      expect(find.widgetWithText(OutlinedButton, 'Panggil'), findsOneWidget);
       expect(find.text('WhatsApp'), findsNothing);
     });
 
     testWidgets('a link offers Open', (tester) async {
       await pump(tester, sharedOf('https://example.com'), onAction: (_) {});
 
-      expect(find.widgetWithText(OutlinedButton, 'Open'), findsOneWidget);
+      expect(find.widgetWithText(OutlinedButton, 'Buka'), findsOneWidget);
     });
 
     testWidgets('offers nothing outside M4', (tester) async {
@@ -255,7 +270,7 @@ void main() {
       final taken = <ActionDescriptor>[];
       await pump(tester, sharedOf('012-3456789'), onAction: taken.add);
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Call'));
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Panggil'));
       await tester.pump();
 
       expect(taken, hasLength(1));
@@ -272,7 +287,7 @@ void main() {
         onAction: taken.add,
       );
 
-      final calls = find.widgetWithText(OutlinedButton, 'Call');
+      final calls = find.widgetWithText(OutlinedButton, 'Panggil');
       expect(calls, findsNWidgets(3));
 
       await tester.tap(calls.at(1));

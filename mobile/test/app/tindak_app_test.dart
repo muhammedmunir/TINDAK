@@ -407,7 +407,7 @@ void main() {
         launcher: launcher,
       );
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Call').first);
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Panggil').first);
       await tester.pumpAndSettle();
 
       expect(launcher.launched, <String>['tel:+60123456789']);
@@ -421,7 +421,7 @@ void main() {
         launcher: launcher,
       );
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Call').at(1));
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Panggil').at(1));
       await tester.pumpAndSettle();
 
       expect(launcher.launched, <String>['tel:+60312345678']);
@@ -450,8 +450,8 @@ void main() {
         launcher: launcher,
       );
 
-      await tester.ensureVisible(find.widgetWithText(OutlinedButton, 'Open'));
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Open'));
+      await tester.ensureVisible(find.widgetWithText(OutlinedButton, 'Buka'));
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Buka'));
       await tester.pumpAndSettle();
 
       expect(launcher.launched, <String>['https://www.tnb.com.my/bayar']);
@@ -465,7 +465,7 @@ void main() {
         launcher: launcher,
       );
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Open'));
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Buka'));
       await tester.pumpAndSettle();
 
       expect(launcher.launched, <String>['http://example.com/a']);
@@ -482,7 +482,7 @@ void main() {
         launcher: launcher,
       );
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Call').first);
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Panggil').first);
       await tester.pumpAndSettle();
       for (var i = 0; i < 3; i++) {
         cycleLifecycle(tester);
@@ -501,7 +501,7 @@ void main() {
         launcher: launcher,
       );
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Call').first);
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Panggil').first);
       await tester.pumpAndSettle();
       cycleLifecycle(tester);
       await tester.pumpAndSettle();

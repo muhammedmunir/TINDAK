@@ -211,11 +211,12 @@ class _EntityRow extends StatelessWidget {
     );
   }
 
-  /// Labels as written in the approved UX flows, sections 5 and 6.
+  /// Malay labels, approved by Product Direction at the M4 review (PD-037).
+  /// WhatsApp is a brand name and stays as it is.
   static String _labelFor(ActionKind kind) => switch (kind) {
-    ActionKind.call => 'Call',
+    ActionKind.call => 'Panggil',
     ActionKind.whatsapp => 'WhatsApp',
-    ActionKind.openUrl => 'Open',
+    ActionKind.openUrl => 'Buka',
   };
 
   static IconData _iconFor(ActionKind kind) => switch (kind) {
