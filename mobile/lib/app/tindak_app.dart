@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:tindak/app/routes.dart';
 import 'package:tindak/app/theme.dart';
+import 'package:tindak/features/actions/executor/action_runner.dart';
+import 'package:tindak/features/actions/model/action_descriptor.dart';
 import 'package:tindak/features/home/home_screen.dart';
 import 'package:tindak/features/intake/incoming_text.dart';
 import 'package:tindak/features/intake/intake_controller.dart';
@@ -63,7 +65,42 @@ class IntakeGate extends ConsumerWidget {
     return IntakeResultScreen(
       incoming: incoming,
       understanding: ref.watch(intakeUnderstandingProvider),
+      onAction: (action) => _runAction(context, ref, action),
       onClose: () => ref.read(intakeControllerProvider.notifier).clear(),
     );
+  }
+
+  /// Shown when an action could not be carried out.
+  ///
+  /// One quiet line. TINDAK stays open and the result stays on screen, so the
+  /// user can still read the number or link and use it another way.
+  static const String actionUnavailableMessage =
+      'Tindakan ini tidak dapat dibuka pada peranti ini.';
+
+  /// Runs an action because the user pressed its button — the only path by
+  /// which TINDAK launches another app.
+  ///
+  /// TINDAK is never closed afterwards. Android keeps it in recents and the
+  /// back gesture returns to this result (PD-014).
+  static Future<void> _runAction(
+    BuildContext context,
+    WidgetRef ref,
+    ActionDescriptor action,
+  ) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final outcome = await ref.read(actionRunnerProvider).run(action);
+
+    switch (outcome) {
+      case ActionOutcome.launched:
+      case ActionOutcome.busy:
+        return;
+      case ActionOutcome.rejected:
+      case ActionOutcome.unavailable:
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(
+            const SnackBar(content: Text(actionUnavailableMessage)),
+          );
+    }
   }
 }

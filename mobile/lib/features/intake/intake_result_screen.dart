@@ -1,19 +1,23 @@
 import 'package:flutter/material.dart';
 
+import 'package:tindak/features/actions/model/action_descriptor.dart';
+import 'package:tindak/features/actions/resolver/action_resolver.dart';
 import 'package:tindak/features/intake/incoming_text.dart';
 import 'package:tindak/features/understanding/model/detected_entity.dart';
 import 'package:tindak/features/understanding/model/entity_type.dart';
 import 'package:tindak/features/understanding/model/understanding_result.dart';
 
-/// Shows the text TINDAK received and what it understood.
+/// Shows the text TINDAK received, what it understood, and what the user can
+/// do with each thing it found.
 ///
 /// Identical presentation for a share and a paste — the user is looking at
 /// their own text and does not need to be told which door it came through.
 ///
-/// **M3 displays understanding only.** Nothing on this screen calls, opens a
-/// link, checks security, or saves. No detected value is tappable. Those are
-/// M4, M5a and M8; this milestone proves TINDAK understands, the next proves
-/// it acts.
+/// **Every external action is a visible, labelled button the user presses.**
+/// Nothing launches on render, on detection, or on resume. The entity row
+/// itself is not a tap target: a user who taps a phone number to read it must
+/// not find the dialer open. Save, Security Check and Try AI are later
+/// milestones and do not appear here.
 ///
 /// Full-screen, not an overlay over the source app (PD-013).
 ///
@@ -24,15 +28,15 @@ class IntakeResultScreen extends StatelessWidget {
   const IntakeResultScreen({
     required this.incoming,
     this.understanding,
+    this.onAction,
     this.onClose,
+    this.resolver = const ActionResolver(),
     super.key,
   });
 
   /// Beyond this, only the first [displayLimit] characters are drawn.
   ///
   /// Matches the understanding cap in PD-028 and applies to both intake paths.
-  /// Laying out a very large string in one text run would drop frames for no
-  /// benefit; nobody reads 200,000 characters on a phone.
   static const int displayLimit = 10000;
 
   /// Approved copy, PRD section 18.
@@ -41,7 +45,12 @@ class IntakeResultScreen extends StatelessWidget {
 
   final IncomingText incoming;
   final UnderstandingResult? understanding;
+
+  /// Called when the user presses an action button. When null, no action
+  /// buttons are shown at all.
+  final void Function(ActionDescriptor action)? onAction;
   final VoidCallback? onClose;
+  final ActionResolver resolver;
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +78,7 @@ class IntakeResultScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: <Widget>[
-              _SectionLabel('Diterima'),
+              const _SectionLabel('Diterima'),
               const SizedBox(height: 12),
               SelectableText(shown, style: theme.textTheme.bodyLarge),
               if (isClipped) ...<Widget>[
@@ -92,10 +101,16 @@ class IntakeResultScreen extends StatelessWidget {
                     ),
                   )
                 else ...<Widget>[
-                  _SectionLabel('Dikesan'),
+                  const _SectionLabel('Dikesan'),
                   const SizedBox(height: 8),
                   for (final entity in result.entities)
-                    _EntityRow(entity: entity),
+                    _EntityRow(
+                      entity: entity,
+                      actions: onAction == null
+                          ? const <ActionDescriptor>[]
+                          : resolver.resolve(entity),
+                      onAction: onAction,
+                    ),
                 ],
               ],
             ],
@@ -123,11 +138,21 @@ class _SectionLabel extends StatelessWidget {
   }
 }
 
-/// One detected entity. Display only: no tap target, no action (M3 boundary).
+/// One detected entity and its actions.
+///
+/// The row is not tappable. Only the labelled buttons beneath it act, and each
+/// button carries its own entity — so in a message with two numbers, Call on
+/// the second row can only dial the second number.
 class _EntityRow extends StatelessWidget {
-  const _EntityRow({required this.entity});
+  const _EntityRow({
+    required this.entity,
+    required this.actions,
+    required this.onAction,
+  });
 
   final DetectedEntity entity;
+  final List<ActionDescriptor> actions;
+  final void Function(ActionDescriptor action)? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -144,7 +169,10 @@ class _EntityRow extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: <Widget>[
-          Icon(icon, size: 22, color: theme.colorScheme.primary),
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Icon(icon, size: 22, color: theme.colorScheme.primary),
+          ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
@@ -157,6 +185,24 @@ class _EntityRow extends StatelessWidget {
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
+                if (actions.isNotEmpty) ...<Widget>[
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: <Widget>[
+                      for (final action in actions)
+                        OutlinedButton.icon(
+                          key: ValueKey<String>(
+                            'action-${action.kind.name}-${entity.start}',
+                          ),
+                          onPressed: () => onAction?.call(action),
+                          icon: Icon(_iconFor(action.kind), size: 18),
+                          label: Text(_labelFor(action.kind)),
+                        ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -164,6 +210,19 @@ class _EntityRow extends StatelessWidget {
       ),
     );
   }
+
+  /// Labels as written in the approved UX flows, sections 5 and 6.
+  static String _labelFor(ActionKind kind) => switch (kind) {
+    ActionKind.call => 'Call',
+    ActionKind.whatsapp => 'WhatsApp',
+    ActionKind.openUrl => 'Open',
+  };
+
+  static IconData _iconFor(ActionKind kind) => switch (kind) {
+    ActionKind.call => Icons.call_outlined,
+    ActionKind.whatsapp => Icons.chat_outlined,
+    ActionKind.openUrl => Icons.open_in_new,
+  };
 
   static String _hostOf(String url) {
     final host = Uri.tryParse(url)?.host;

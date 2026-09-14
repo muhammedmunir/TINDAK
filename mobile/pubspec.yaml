@@ -20,6 +20,13 @@ dependencies:
   # application logic is testable without a BuildContext or WidgetTester.
   flutter_riverpod: ^3.3.2
 
+  # Hands Call, WhatsApp and Open to the apps that do them (M4). The only
+  # maintained bridge to Android's ACTION_VIEW, and it needs no permission:
+  # tel: opens the dialer pre-filled rather than placing a call, so there is
+  # no CALL_PHONE request. Every URI it receives is built and validated by
+  # ActionUriBuilder first.
+  url_launcher: ^6.3.2
+
 dev_dependencies:
   flutter_lints: ^6.0.0
   flutter_test:
