@@ -625,6 +625,37 @@ Direct production database access for Claude Code is **not approved**. The
 original arrangement stands: Claude writes SQL, the CEO runs it in the Supabase
 SQL Editor and returns only the result grid. A database password that entered a
 chat transcript is reset immediately. No permission rule for Postgres is added.
+**Status:** Superseded by the CEO override below.
+
+### CEO OVERRIDE — TINDAK Supabase project administration (2026-09-15)
+**Decision:** Claude Code may administer the **TINDAK Supabase project** for
+development, deployment, migrations, authentication configuration, RLS and
+security verification, database functions and M5b validation, using the
+Supabase CLI, PostgreSQL tooling and the Management API where appropriate.
+Supersedes the entry above. Product Direction accepts the override.
+
+**Credentials**
+- The database password exposed in a chat transcript is reset before use.
+- Credentials never enter chat, Git, logs, test output or Flutter. They live
+  only in `supabase/.env`, confirmed git-ignored with `git check-ignore` before
+  use. `mobile/.env.client` holds client-safe values only.
+- Least privilege where Supabase supports it: the project-scoped database
+  connection first. An account-wide personal access token only when a task
+  cannot be done otherwise.
+
+**Safeguards before the first write:** verify the project ref is TINDAK's;
+confirm every credential file is ignored; read-only connectivity and
+configuration checks; review the pending SQL; touch no unrelated resource.
+
+**Always requires CEO confirmation first:** anything destructive or
+irreversible outside the approved migrations — dropping tables, deleting
+production data or users, resetting the database, disabling RLS, rotating
+credentials, billing, deleting the project. RLS and security controls are never
+weakened to make a test pass.
+
+**Scope:** M5b only. Security gate 32/32 PASS, then the 12 live scenarios, then
+Product Direction final review. No M6.
+**Status:** Accepted — CEO, with Product Direction acknowledgement.
 
 ---
 
