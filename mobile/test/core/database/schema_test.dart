@@ -58,6 +58,19 @@ void main() {
       ]);
     });
 
+    test('sync_meta is a key/value table keyed by key', () async {
+      expect(await columnsOf('sync_meta'), <String>['key', 'value']);
+      await db.customStatement(
+        "INSERT INTO sync_meta (key, value) VALUES ('pull_cursor:u', 'a')",
+      );
+      await expectLater(
+        db.customStatement(
+          "INSERT INTO sync_meta (key, value) VALUES ('pull_cursor:u', 'b')",
+        ),
+        throwsA(isA<Exception>()),
+      );
+    });
+
     test('memory_entities has exactly the documented columns', () async {
       expect(await columnsOf('memory_entities'), <String>[
         'id',

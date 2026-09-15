@@ -4,9 +4,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tindak/app/routes.dart';
 import 'package:tindak/core/clock/clock_provider.dart';
 import 'package:tindak/features/actions/widgets/entity_row.dart';
+import 'package:tindak/features/auth/auth_providers.dart';
 import 'package:tindak/features/intake/intake_controller.dart';
 import 'package:tindak/features/memory/memory_providers.dart';
 import 'package:tindak/features/memory/model/memory_record.dart';
+import 'package:tindak/features/sync/sync_providers.dart';
 import 'package:tindak/shared/saved_date_label.dart';
 
 /// Home: the empty state until something is saved, then Memory.
@@ -23,8 +25,11 @@ class HomeScreen extends ConsumerWidget {
   static const String noMatchesMessage = 'Tiada memori sepadan.';
   static const String unreadableMessage = 'Memori tidak dapat dibaca.';
 
+  static const String settingsTooltip = 'Tetapan';
+
   /// PD-019: guest data can be lost on uninstall. Said plainly, in Memory,
-  /// without blocking anything. There is no sign-in offer here — that is M5b.
+  /// without blocking anything. Shown while any listed item exists only on
+  /// this device; account items are not at that risk.
   static const String deviceOnlyNotice =
       'Disimpan pada peranti ini sahaja. Item mungkin hilang jika TINDAK '
       'dinyahpasang.';
@@ -85,6 +90,11 @@ class _Scaffold extends ConsumerWidget {
               icon: const Icon(Icons.content_paste_outlined),
               tooltip: 'Tampal',
             ),
+          IconButton(
+            onPressed: () => Navigator.of(context).pushNamed(Routes.settings),
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: HomeScreen.settingsTooltip,
+          ),
         ],
       ),
       body: body,
@@ -164,6 +174,22 @@ class _MemoryListState extends ConsumerState<_MemoryList> {
     final theme = Theme.of(context);
     final today = ref.watch(clockProvider).today();
     final records = widget.records;
+    final signedIn = ref.watch(
+      currentAccountProvider.select((a) => a != null),
+    );
+    final anyDeviceOnly = records.any(
+      (r) => r.storage == MemoryStorage.deviceOnly,
+    );
+
+    final list = records.isEmpty
+        ? const _CentredMessage(HomeScreen.noMatchesMessage)
+        : ListView.separated(
+            physics: const AlwaysScrollableScrollPhysics(),
+            itemCount: records.length,
+            separatorBuilder: (_, _) => const Divider(height: 1),
+            itemBuilder: (context, index) =>
+                _MemoryTile(record: records[index], today: today),
+          );
 
     // SafeArea at the bottom only: the device-only notice was drawn under the
     // gesture navigation bar on a real device.
@@ -197,25 +223,27 @@ class _MemoryListState extends ConsumerState<_MemoryList> {
             ),
           ),
           Expanded(
-            child: records.isEmpty
-                ? const _CentredMessage(HomeScreen.noMatchesMessage)
-                : ListView.separated(
-                    itemCount: records.length,
-                    separatorBuilder: (_, _) => const Divider(height: 1),
-                    itemBuilder: (context, index) =>
-                        _MemoryTile(record: records[index], today: today),
-                  ),
+            // Manual pull is a sync trigger, offered only when there is an
+            // account to sync (docs/10_ARCHITECTURE.md section 8.1).
+            child: signedIn
+                ? RefreshIndicator(
+                    onRefresh: () =>
+                        ref.read(syncControllerProvider.notifier).requestSync(),
+                    child: list,
+                  )
+                : list,
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-            child: Text(
-              HomeScreen.deviceOnlyNotice,
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
+          if (anyDeviceOnly)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+              child: Text(
+                HomeScreen.deviceOnlyNotice,
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
-          ),
         ],
       ),
     );

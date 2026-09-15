@@ -108,13 +108,15 @@ void main() {
     expect(columns, isNot(contains('server_updated_at')));
   });
 
-  test('upgrades to version 2 and adds server_updated_at', () async {
+  test('upgrades to version 2: server_updated_at and sync_meta', () async {
     createVersion1Database();
 
     final db = TindakDatabase(NativeDatabase(file));
     addTearDown(db.close);
 
     expect(await columnsOf(db, 'memories'), contains('server_updated_at'));
+    expect(await columnsOf(db, 'sync_meta'), <String>['key', 'value']);
+    expect(await db.select(db.syncMeta).get(), isEmpty);
     final version = await db.customSelect('PRAGMA user_version').getSingle();
     expect(version.read<int>('user_version'), 2);
   });
@@ -236,6 +238,7 @@ void main() {
     addTearDown(db.close);
 
     expect(await columnsOf(db, 'memories'), contains('server_updated_at'));
+    expect(await columnsOf(db, 'sync_meta'), <String>['key', 'value']);
     final version = await db.customSelect('PRAGMA user_version').getSingle();
     expect(version.read<int>('user_version'), 2);
   });

@@ -1,6 +1,20 @@
 import 'package:tindak/features/intake/incoming_text.dart';
 import 'package:tindak/features/understanding/model/detected_entity.dart';
 
+/// Where a saved item lives, as a person would describe it (PD-020).
+///
+/// The UI shows these in plain words, never as database terms.
+enum MemoryStorage {
+  /// Guest-owned. Exists only on this phone.
+  deviceOnly,
+
+  /// Belongs to the signed-in account; the cloud has not confirmed it yet.
+  pendingSync,
+
+  /// Belongs to the signed-in account and is in the cloud.
+  synced,
+}
+
 /// A saved item, as the rest of the app sees it.
 ///
 /// The UI never touches a database row. Drift's generated rows print every
@@ -15,6 +29,7 @@ final class MemoryRecord {
     required this.updatedAt,
     required List<DetectedEntity> entities,
     this.sourceApp,
+    this.storage = MemoryStorage.deviceOnly,
   }) : entities = List<DetectedEntity>.unmodifiable(entities);
 
   /// Client-generated UUIDv4.
@@ -36,17 +51,22 @@ final class MemoryRecord {
   /// validated actions as a freshly shared one.
   final List<DetectedEntity> entities;
 
-  @override
-  bool operator ==(Object other) =>
-      identical(this, other) || other is MemoryRecord && id == other.id;
+  /// Guest item, or account item waiting for or already in the cloud.
+  final MemoryStorage storage;
 
   @override
-  int get hashCode => id.hashCode;
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is MemoryRecord && id == other.id && storage == other.storage;
+
+  @override
+  int get hashCode => Object.hash(id, storage);
 
   /// Deliberately excludes [content] and entity values
   /// (docs/12_SECURITY.md section 11).
   @override
   String toString() =>
       'MemoryRecord(id: $id, source: ${source.name}, '
-      'characters: ${content.length}, entities: ${entities.length})';
+      'storage: ${storage.name}, characters: ${content.length}, '
+      'entities: ${entities.length})';
 }

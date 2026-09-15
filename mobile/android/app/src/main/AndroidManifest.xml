@@ -1,4 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- M5b: the first network permission TINDAK requests. Used only for
+         Supabase Auth (email OTP) and Memory sync for a signed-in user
+         (docs/13_API.md). A guest never contacts the cloud (PD-001), and
+         cleartext HTTP stays disabled below. Changes the Play Data Safety
+         declaration (docs/14_M5B_RECONCILIATION.md section 5). -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Security posture: see docs/12_SECURITY.md sections 4 and 7 (ADR-021).
          allowBackup=false and the extraction rules stop the local database
          being copied into cloud backup or an adb backup, which is the

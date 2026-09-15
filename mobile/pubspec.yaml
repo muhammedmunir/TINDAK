@@ -29,6 +29,10 @@ dependencies:
   # application logic is testable without a BuildContext or WidgetTester.
   flutter_riverpod: ^3.3.2
 
+  # Keeps the Supabase session in Android Keystore-backed storage (M5b,
+  # ADR-020). Supabase's default store is plain SharedPreferences.
+  flutter_secure_storage: ^11.1.1
+
   # Locates the app's private support directory for the database file (M5a).
   path_provider: ^2.1.5
 
@@ -36,6 +40,11 @@ dependencies:
   # SQLite to apps. Kept below 0.6.0, an end-of-life shell for the sqlite3 3.x
   # line this toolchain cannot use. No SQLCipher (ADR-021).
   sqlite3_flutter_libs: '>=0.5.42 <0.6.0'
+
+  # Cloud backend: email OTP sign-in and Memory sync (ADR-001, M5b). Imported
+  # only by the adapter files listed in layer_purity_test.dart. Receives the
+  # project URL and publishable key at build time, never from source.
+  supabase_flutter: ^2.17.2
 
   # Hands Call, WhatsApp and Open to the apps that do them (M4). The only
   # maintained bridge to Android's ACTION_VIEW, and it needs no permission:

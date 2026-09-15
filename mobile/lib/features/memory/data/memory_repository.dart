@@ -22,9 +22,11 @@ final class MemoryStorageException implements Exception {
   String toString() => 'MemoryStorageException';
 }
 
-/// Local Memory (M5a).
+/// Memory on this device — the source of truth (ADR-014).
 ///
-/// Everything here works with no network permission and no connection.
+/// Everything here works with no connection. Nothing here talks to the cloud:
+/// sync reads and acknowledges rows through `SyncStore`, never through this
+/// interface, so a save or delete can never wait on the network (PD-042).
 abstract interface class MemoryRepository {
   /// Stores one item because the user pressed Simpan.
   ///
@@ -41,7 +43,8 @@ abstract interface class MemoryRepository {
 
   Future<Result<MemoryRecord>> findById(String id);
 
-  /// Permanently removes a memory and everything derived from it (PD-006).
+  /// Removes a memory and everything derived from it (PD-006). It disappears
+  /// from Memory and search at once, whether or not sync has run yet.
   Future<Result<void>> delete(String id);
 }
 
@@ -50,17 +53,26 @@ final class DriftMemoryRepository implements MemoryRepository {
     this._db, {
     required Clock clock,
     Uuid uuid = const Uuid(),
+    String? Function()? currentUserId,
   }) : _clock = clock,
-       _uuid = uuid;
+       _uuid = uuid,
+       _currentUserId = currentUserId ?? _guest;
 
   final TindakDatabase _db;
   final Clock _clock;
   final Uuid _uuid;
 
+  /// The signed-in account, or null for a guest. Read on every call, so
+  /// signing in or out takes effect without rebuilding the repository.
+  final String? Function() _currentUserId;
+
+  static String? _guest() => null;
+
   static const AppLogger _log = AppLogger('memory');
 
-  /// Sync status of every row written in M5a.
   static const String _localOnly = 'local_only';
+  static const String _pending = 'pending';
+  static const String _synced = 'synced';
 
   @override
   Future<Result<String>> save({
@@ -78,6 +90,7 @@ final class DriftMemoryRepository implements MemoryRepository {
 
     final id = _uuid.v4();
     final now = _clock.now().toUtc().millisecondsSinceEpoch;
+    final owner = _currentUserId();
 
     try {
       await _db.transaction(() async {
@@ -92,10 +105,11 @@ final class DriftMemoryRepository implements MemoryRepository {
                 sourceApp: Value<String?>(incoming.sourceApp),
                 createdAt: now,
                 updatedAt: now,
-                // Guest-owned and local only. M5a has no account to own it and
-                // no cloud to send it to.
-                ownerUserId: const Value<String?>(null),
-                syncStatus: _localOnly,
+                // A guest's save stays on this phone. A signed-in save belongs
+                // to the account and waits for sync (PD-042) — committed here
+                // first, so it never depends on the network.
+                ownerUserId: Value<String?>(owner),
+                syncStatus: owner == null ? _localOnly : _pending,
               ),
             );
 
@@ -133,6 +147,7 @@ final class DriftMemoryRepository implements MemoryRepository {
       '''
       SELECT m.* FROM memories m
       WHERE m.deleted_at IS NULL
+        AND (m.owner_user_id IS NULL OR m.owner_user_id = ?6)
         AND (
           ?1 = ''
           OR m.content LIKE ?2 ESCAPE '\\'
@@ -153,6 +168,9 @@ final class DriftMemoryRepository implements MemoryRepository {
         Variable<String>(MemorySearch.containsPattern(text.toLowerCase())),
         Variable<String>(digits),
         Variable<String>(MemorySearch.containsPattern(digits)),
+        // Unified Memory (PD-020): guest rows plus the signed-in account's.
+        // No account id is empty, so a guest sees guest rows only.
+        Variable<String>(_currentUserId() ?? ''),
       ],
       readsFrom: <ResultSetImplementation<dynamic, dynamic>>{
         _db.memories,
@@ -178,10 +196,7 @@ final class DriftMemoryRepository implements MemoryRepository {
   @override
   Future<Result<MemoryRecord>> findById(String id) async {
     try {
-      final row =
-          await (_db.select(_db.memories)
-                ..where((m) => m.id.equals(id) & m.deletedAt.isNull()))
-              .getSingleOrNull();
+      final row = await _visibleRow(id);
       if (row == null) {
         return const Result<MemoryRecord>.err(NotFoundFailure());
       }
@@ -199,30 +214,47 @@ final class DriftMemoryRepository implements MemoryRepository {
   @override
   Future<Result<void>> delete(String id) async {
     try {
-      final row =
-          await (_db.select(_db.memories)
-                ..where((m) => m.id.equals(id) & m.deletedAt.isNull()))
-              .getSingleOrNull();
+      final row = await _visibleRow(id);
       if (row == null) return const Result<void>.err(NotFoundFailure());
 
-      // M5a only ever writes local_only rows, and a row that never left the
-      // device needs no tombstone: it is removed outright, with its entities by
-      // cascade. A row that has been synced must instead become a tombstone so
-      // other devices learn of the deletion (PD-021) — that is M5b's job, and
-      // until it exists such a row is refused rather than silently hard
-      // deleted and later resurrected by a sync.
-      if (row.syncStatus != _localOnly) {
-        _log.failure('memory_delete_requires_sync');
-        return const Result<void>.err(
-          UnexpectedFailure('delete_requires_sync'),
-        );
+      // A guest row never leaves this phone, so there is no other copy to
+      // inform: it is removed outright, entities by cascade.
+      if (row.ownerUserId == null) {
+        await (_db.delete(_db.memories)..where((m) => m.id.equals(id))).go();
+        return const Result<void>.ok(null);
       }
 
-      await (_db.delete(_db.memories)..where((m) => m.id.equals(id))).go();
+      // An account row becomes a tombstone, which sync sends and then removes
+      // here (PD-021). Even with no server acknowledgement yet: a push of this
+      // row may be in flight, and a hard delete now would let the next pull
+      // bring it back. Sync never uploads the content of a tombstone.
+      final now = _clock.now().toUtc().millisecondsSinceEpoch;
+      await (_db.update(_db.memories)..where((m) => m.id.equals(id))).write(
+        MemoriesCompanion(
+          deletedAt: Value<int?>(now),
+          // A device clock behind the save time must not break updated_at >=
+          // created_at. The server sets its own updated_at regardless.
+          updatedAt: Value<int>(now < row.createdAt ? row.createdAt : now),
+          syncStatus: const Value<String>(_pending),
+        ),
+      );
       return const Result<void>.ok(null);
     } catch (error, stackTrace) {
       return _storageFailure<void>('delete', error, stackTrace);
     }
+  }
+
+  /// A row the current user may see: not deleted, and guest-owned or owned by
+  /// the signed-in account. Another account's rows are never visible.
+  Future<MemoryRow?> _visibleRow(String id) {
+    final uid = _currentUserId();
+    return (_db.select(_db.memories)..where((m) {
+          final owned = uid == null
+              ? m.ownerUserId.isNull()
+              : m.ownerUserId.isNull() | m.ownerUserId.equals(uid);
+          return m.id.equals(id) & m.deletedAt.isNull() & owned;
+        }))
+        .getSingleOrNull();
   }
 
   /// Attaches entities to rows, and maps both to domain types.
@@ -279,6 +311,11 @@ final class DriftMemoryRepository implements MemoryRepository {
         isUtc: true,
       ).toLocal(),
       entities: entities,
+      storage: row.ownerUserId == null
+          ? MemoryStorage.deviceOnly
+          : row.syncStatus == _synced
+          ? MemoryStorage.synced
+          : MemoryStorage.pendingSync,
     );
   }
 

@@ -5,6 +5,7 @@ import 'package:tindak/core/database/tindak_database.dart';
 import 'package:tindak/core/failure/failure.dart';
 import 'package:tindak/core/logging/app_logger.dart';
 import 'package:tindak/core/result/result.dart';
+import 'package:tindak/features/auth/auth_providers.dart';
 import 'package:tindak/features/intake/incoming_text.dart';
 import 'package:tindak/features/memory/data/memory_repository.dart';
 import 'package:tindak/features/memory/model/memory_record.dart';
@@ -25,6 +26,9 @@ final Provider<MemoryRepository> memoryRepositoryProvider =
       (ref) => DriftMemoryRepository(
         ref.watch(databaseProvider),
         clock: ref.watch(clockProvider),
+        // Read at each call rather than watched, so signing in or out does not
+        // rebuild the repository under a save in progress.
+        currentUserId: () => ref.read(currentAccountProvider)?.id,
       ),
     );
 
@@ -40,18 +44,23 @@ class MemoryQuery extends Notifier<String> {
 }
 
 /// Visible memories matching the current search, newest first.
+///
+/// Watches the account so the list is re-queried the moment someone signs in
+/// or out: guest items plus that account's items, one list (PD-020).
 final StreamProvider<List<MemoryRecord>> memoryListProvider =
-    StreamProvider<List<MemoryRecord>>(
-      (ref) => ref
+    StreamProvider<List<MemoryRecord>>((ref) {
+      ref.watch(currentAccountProvider.select((a) => a?.id));
+      return ref
           .watch(memoryRepositoryProvider)
-          .watch(query: ref.watch(memoryQueryProvider)),
-    );
+          .watch(query: ref.watch(memoryQueryProvider));
+    });
 
 /// One memory, for the detail screen.
 final memoryDetailProvider = FutureProvider.autoDispose
-    .family<Result<MemoryRecord>, String>(
-      (ref, id) => ref.watch(memoryRepositoryProvider).findById(id),
-    );
+    .family<Result<MemoryRecord>, String>((ref, id) {
+      ref.watch(currentAccountProvider.select((a) => a?.id));
+      return ref.watch(memoryRepositoryProvider).findById(id);
+    });
 
 /// True while a save is being written, so Simpan can show that the press was
 /// received and cannot be pressed again (PD-040).

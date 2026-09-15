@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tindak/app/tindak_app.dart';
 import 'package:tindak/core/database/tindak_database.dart';
@@ -83,6 +84,7 @@ Future<TindakDatabase> pumpApp(
   RecordingLauncher? launcher,
   TindakDatabase? database,
   MemoryRepository? repository,
+  List<Override> overrides = const <Override>[],
 }) async {
   final db = database ?? openTestDatabase();
   addTearDown(db.close);
@@ -100,6 +102,7 @@ Future<TindakDatabase> pumpApp(
         databaseProvider.overrideWithValue(db),
         if (repository != null)
           memoryRepositoryProvider.overrideWithValue(repository),
+        ...overrides,
       ],
       child: const TindakApp(),
     ),

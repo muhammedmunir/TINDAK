@@ -11,6 +11,9 @@ final class Routes {
   /// One saved item. Argument: the memory id.
   static const String memoryDetail = '/memory';
 
-  // Added by their own milestones:
-  //   settings     M5b
+  /// Akaun and Cloud Sync only (PD-043).
+  static const String settings = '/settings';
+
+  /// Email and six-digit code. Pops `true` once signed in.
+  static const String signIn = '/sign-in';
 }
