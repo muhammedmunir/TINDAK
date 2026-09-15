@@ -391,9 +391,67 @@ Environment: the single Supabase project (CEO decision). Run order
 | Tetapan opened and closed 17×, including 4 home/resume cycles and recents | opened every time, same process throughout, no crash or error in logcat |
 | Earlier single unexplained close | not reproduced; no TINDAK entry in the crash buffer |
 
-#### Supabase migrations and RLS matrix — PENDING (CEO runs)
+#### Supabase migrations and RLS matrix (2026-09-15) — 32/32 PASS
 
-Paste the result grid here under a dated heading. The grid has exactly
+Run by Claude under the CEO override, project `bgagjiefhfkxrabmaipz`, Postgres
+17.6, through the session pooler. Read-only check first: public schema empty,
+0 users.
+
+| Step | Result |
+|---|---|
+| `20260915000001_memories.sql` (one transaction) | applied |
+| `20260915000002_memories_rls.sql` (one transaction) | applied |
+| `20260915000003_push_memory.sql` (one transaction) | applied |
+| `rls_memories.sql`, run 1 | **31/32 — P-5 FAIL** |
+| `rls_memories.sql`, run 2 | **32/32 PASS** |
+| After run 2 | 0 users, 0 memories, 0 entities left; RLS on both tables; 5 policies |
+
+**P-5 diagnosis.** The script runs in one transaction, where `now()` is
+constant, so P-5's `ts_after > ts_before` could never hold. The observed value
+was already server time, not the client's `2000-01-01`, so the protection held
+and the test was wrong. The fix makes P-5 stricter, not looser: the tombstone
+update now also sends `updated_at = 2000-01-01`, and both insert and update
+must come back as server time. P-8's "same time" is equally trivial inside one
+transaction; its idempotency is proven by the entity count staying at 1.
+
+Run 2 grid:
+
+| id | check | observed | result |
+|---|---|---|---|
+| P-1 | A creates own memory | allowed | PASS |
+| P-2 | A adds entity to own memory | allowed | PASS |
+| P-3 | A reads own memory with entity | 1 row | PASS |
+| P-4 | A tombstones own memory | 1 row | PASS |
+| P-5 | client-supplied updated_at is ignored | insert and update both server time | PASS |
+| P-6 | 10,000 emoji (code points) accepted | allowed | PASS |
+| P-7 | A pushes memory + entity via push_memory | allowed, 1 entity | PASS |
+| P-8 | repeated push is idempotent | allowed, 1 entity | PASS |
+| B-15 | A pushes using B memory id | denied, B unchanged | PASS |
+| B-1 | A reads B memory by id | 0 rows | PASS |
+| B-3 | A inserts memory as B | denied | PASS |
+| B-4 | A reassigns own memory to B | denied | PASS |
+| B-5 | A deletes B memory | denied, row intact | PASS |
+| B-5b | A hard deletes own memory | denied | PASS |
+| B-6 | A reads B entities | 0 rows | PASS |
+| B-7 | A reaches B rows via join | 0 rows | PASS |
+| B-12 | A enumerates auth.users | denied | PASS |
+| B-13 | A attaches entity to B memory | denied | PASS |
+| B-13b | A adds entity to own memory as B | denied | PASS |
+| B-14 | A tombstones B memory | 0 rows updated | PASS |
+| I-1 | A rewrites own memory text | denied | PASS |
+| I-2 | A restores own tombstone | denied | PASS |
+| I-3 | 10,001 code points refused | denied | PASS |
+| I-4 | A creates an already-deleted memory | denied | PASS |
+| I-5 | A adds entity to own tombstone | denied | PASS |
+| I-6 | unknown intake_source refused | denied | PASS |
+| I-7 | push with invalid entity is all-or-nothing | denied, 0 rows | PASS |
+| B-2 | anon reads memories | denied | PASS |
+| B-2b | anon inserts memory | denied | PASS |
+| B-2c | anon calls push_memory | denied, grant absent | PASS |
+| S-1 | push_memory invoker-rights, search_path locked | invoker, search_path="" | PASS |
+| Z-1 | test data removed | 0 rows | PASS |
+
+Required for every future run: the grid has exactly
 **32 rows** and every row must be PASS:
 P-1…P-8 (8), B-1, B-2, B-2b, B-2c, B-3…B-7, B-5b, B-12, B-13, B-13b, B-14,
 B-15 (15), I-1…I-7 (7), S-1, Z-1 (2). A grid with fewer rows means the script

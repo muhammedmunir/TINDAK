@@ -657,6 +657,12 @@ weakened to make a test pass.
 Product Direction final review. No M6.
 **Status:** Accepted — CEO, with Product Direction acknowledgement.
 
+**CEO waiver (2026-09-15):** the CEO chose not to reset the database password
+that appeared in a chat transcript, and asked Claude to perform all Supabase
+steps. Risk explained and accepted by the CEO. Claude placed the connection in
+the git-ignored `supabase/.env`; the value is never printed or committed.
+Revisit before closed beta, when production is separated from development.
+
 ---
 
 # Part 4 — Open, awaiting decision

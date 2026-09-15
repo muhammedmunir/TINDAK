@@ -119,12 +119,13 @@ begin
   insert into public.memories (id, user_id, content, intake_source, updated_at)
   values (a_tomb, a, 'A memory to delete', 'share', '2000-01-01');
   select updated_at into ts_before from public.memories where id = a_tomb;
-  perform pg_sleep(0.01);
 
   perform set_config('role', 'authenticated', true);
   denied := false;
   begin
-    update public.memories set deleted_at = now() where id = a_tomb;
+    -- The client also tries to backdate updated_at on the update.
+    update public.memories set deleted_at = now(), updated_at = '2000-01-01'
+    where id = a_tomb;
     get diagnostics n = row_count;
   exception when others then denied := true; n := 0;
   end;
@@ -135,11 +136,14 @@ begin
      case when denied then 'denied' else n || ' row(s)' end,
      case when not denied and n = 1 then 'PASS' else 'FAIL' end);
 
-  -- P-5 updated_at is server-set, not client-set
+  -- P-5 updated_at is server-set on insert AND update, never client-set.
+  -- This whole script is one transaction, where now() is constant, so the two
+  -- server times are equal by design; what matters is that neither is the
+  -- client's 2000-01-01.
   insert into rls_results (id, check_, expected, observed, result) values
     ('P-5', 'client-supplied updated_at is ignored', 'server time, not 2000',
-     ts_before::text,
-     case when ts_before > '2020-01-01' and ts_after > ts_before
+     'insert ' || ts_before::text || ', update ' || ts_after::text,
+     case when ts_before > '2020-01-01' and ts_after > '2020-01-01'
           then 'PASS' else 'FAIL' end);
 
   -- P-6 exactly 10,000 code points is accepted (PD-039)
