@@ -2,7 +2,7 @@
 
 **Owner:** Shared governance
 **Status:** ARCHITECTURE LOCKED — 2026-09-10
-ADR-001…ADR-031 Accepted · PD-001…PD-045 Accepted
+ADR-001…ADR-031 Accepted · ADR-032 Proposed · PD-001…PD-045 Accepted
 
 Three registers, all binding:
 
@@ -574,6 +574,27 @@ local, deterministic and non-AI (PD-004).
 **Detail:** `11_DATABASE.md` §3.1.
 **Status:** Accepted — Product Direction and CEO, M5a review. Amends ADR-015's
 search mechanism only; Drift over SQLite stands. See PD-038.
+
+## ADR-032 — Sync implementation details (M5b)
+**Decision:** Three technical refinements of ADR-019 and `13_API.md` §2 found
+while building sync. None changes product behaviour.
+
+1. **Push goes through `public.push_memory()`, not a table upsert.** It inserts
+   a memory and its entities in one transaction, runs `SECURITY INVOKER` under
+   the caller's RLS, takes `user_id` from `auth.uid()` only, and is idempotent.
+   Two separate inserts would let another device pull a memory before its
+   entities exist, and since memories are immutable it would never get them.
+2. **Deleting an account item always leaves a tombstone,** even one the server
+   has never acknowledged. Refines reconciliation §2.1: a push of that item may
+   already be in flight, and a local hard delete would let the next pull bring
+   it back. Sync never uploads the content of a tombstoned item; guest items
+   are still deleted outright.
+3. **Full re-pull after 80 days without a pull,** inside the 90-day purge window
+   (PD-028), so the reset always happens before a tombstone can be purged.
+
+**Detail:** `supabase/migrations/20260915000003_push_memory.sql`,
+`mobile/lib/features/sync/`.
+**Status:** Proposed — for Product Direction review at the M5b gate.
 
 ---
 

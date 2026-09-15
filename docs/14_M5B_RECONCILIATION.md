@@ -209,15 +209,17 @@ Remaining from the original list:
 
 ## 6. Proposed M5b order
 
-Progress as of 2026-09-15:
+Progress as of 2026-09-15 (after PD-041…PD-045):
 
-- **Done, independent of §4:** step 1 (local schema v2, upgrade test from a real
-  v1 file), step 2 (cloud migrations as SQL files, not yet run), and the RLS
-  test script for step 3.
-- **Waiting on the CEO:** running the two migrations and the RLS test script in
-  the SQL Editor, and returning the result grid.
-- **Waiting on §4:** steps 5–7 — sync of new saves (D-2), Settings (D-3),
-  migration prompt copy (D-4), sign-out (D-1).
+- **Done in code, tested locally:** steps 1, 2, 4–7. Three migrations as SQL
+  files; email OTP sign-in; sync engine; guest migration prompt; minimal
+  Settings; fail-safe sign-out. 498 automated tests pass. Implementation details
+  proposed as ADR-032.
+- **Emulator:** the v1→v2 upgrade ran on a real M5a install with data intact;
+  Home and Settings render with cloud configuration.
+- **Waiting on the CEO:** running the three migrations and the RLS test script,
+  the Supabase OTP email template, and a real sign-in with a code from email.
+  Step 3 and step 8 cannot finish without these.
 
 Original order:
 
