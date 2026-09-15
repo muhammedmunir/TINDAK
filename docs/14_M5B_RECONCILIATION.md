@@ -1,7 +1,7 @@
 # 14 — M5b RECONCILIATION
 
 **Owner:** Technical Lead (Claude)
-**Status:** FOR PRODUCT DIRECTION AND CEO REVIEW — no M5b code written
+**Status:** FOR PRODUCT DIRECTION AND CEO REVIEW — steps 1–2 built, steps 5–7 wait on §4
 **Date:** 2026-09-15
 **Inputs:** M5a as merged (`develop` at `7c5fb27`), `10_ARCHITECTURE.md` §8,
 `11_DATABASE.md` §2–§3, `12_SECURITY.md` §3 and §5, `13_API.md` §1–§2,
@@ -183,6 +183,18 @@ is a decision, not an accident.
 
 ## 5. What the CEO needs to provide or allow
 
+### 5.0 Resolved by the CEO, 2026-09-15
+
+| Item | Decision |
+|---|---|
+| Supabase project | Provided. Reachable, key valid, database empty at start of M5b. |
+| Local Supabase / Docker | **Not used.** Migrations and security tests run on the online project. |
+| How migrations run | Claude writes SQL files; the CEO pastes each into the SQL Editor. No database password or access token is shared. |
+| Environments | **One Supabase project for everything** — development, testing and real users. Accepted with its consequence: every migration and security test runs against the only database, so the RLS test script is built to be safe there. |
+| GitHub repository | `github.com/muhammedmunir/TINDAK`, **public**, pushed by the CEO. Git history scanned before the first push: no keys, tokens or project URL committed. |
+
+Remaining from the original list:
+
 | Item | Why | When |
 |---|---|---|
 | A Supabase project, and its URL and anon key | Auth and sync have nowhere to run otherwise. The CEO owns credentials (master plan §1). | Before implementation |
@@ -195,7 +207,19 @@ is a decision, not an accident.
 
 ---
 
-## 6. Proposed M5b order, once §4 is decided
+## 6. Proposed M5b order
+
+Progress as of 2026-09-15:
+
+- **Done, independent of §4:** step 1 (local schema v2, upgrade test from a real
+  v1 file), step 2 (cloud migrations as SQL files, not yet run), and the RLS
+  test script for step 3.
+- **Waiting on the CEO:** running the two migrations and the RLS test script in
+  the SQL Editor, and returning the result grid.
+- **Waiting on §4:** steps 5–7 — sync of new saves (D-2), Settings (D-3),
+  migration prompt copy (D-4), sign-out (D-1).
+
+Original order:
 
 1. Local schema v2 (`server_updated_at`) with an upgrade test from a real v1 file.
 2. Supabase migrations: schema as reconciled in §2.3, RLS with the §2.2 fix,

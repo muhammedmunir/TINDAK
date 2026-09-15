@@ -51,20 +51,34 @@ class TindakDatabase extends _$TindakDatabase {
   /// be impossible to sync.
   static const int maxContentLength = 10000;
 
-  /// Version 1 is the M5a schema. Every change bumps this and adds an explicit
-  /// step to [migration]; a migration that has run on a real device is never
-  /// edited (docs/11_DATABASE.md section 6).
+  /// Schema history. Every change bumps this and adds an explicit step to
+  /// [migration]; a step that has run on a real device is never edited
+  /// (docs/11_DATABASE.md section 6).
+  ///
+  /// - 1 — M5a Local Memory.
+  /// - 2 — M5b: `memories.server_updated_at`, so the device knows whether the
+  ///   server has ever acknowledged a row
+  ///   (docs/14_M5B_RECONCILIATION.md section 2.1).
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) => m.createAll(),
     onUpgrade: (m, from, to) async {
-      // No upgrades exist yet. An unknown jump is refused rather than guessed
-      // at, because guessing with a user's only copy of their data is the one
-      // thing a migration must never do.
-      throw StateError('No migration path from schema $from to $to');
+      // Only known steps are run. An unknown jump — including a downgrade from
+      // a newer build — is refused rather than guessed at, because guessing
+      // with a user's only copy of their data is the one thing a migration must
+      // never do.
+      if (from < 1 || to > 2 || from >= to) {
+        throw StateError('No migration path from schema $from to $to');
+      }
+      if (from < 2) {
+        // ADD COLUMN, not a table rebuild: existing rows keep every value and
+        // every CHECK, and the new column is NULL — correctly meaning "the
+        // server has never seen this row", which is true of every M5a row.
+        await m.addColumn(memories, memories.serverUpdatedAt);
+      }
     },
     beforeOpen: (details) async {
       // SQLite leaves foreign keys off unless asked. Without this, deleting a
@@ -107,6 +121,12 @@ class Memories extends Table {
 
   /// `local_only` in M5a, always.
   TextColumn get syncStatus => text().named('sync_status')();
+
+  /// The server's `updated_at` from the last successful push or pull, epoch ms
+  /// UTC. NULL means the server has never acknowledged this row — so deleting
+  /// it can be a local hard delete, with no tombstone to send (schema v2).
+  IntColumn get serverUpdatedAt =>
+      integer().named('server_updated_at').nullable()();
 
   @override
   Set<Column<Object>> get primaryKey => <Column<Object>>{id};

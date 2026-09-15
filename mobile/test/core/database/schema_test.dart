@@ -39,8 +39,8 @@ void main() {
   );
 
   group('shape', () {
-    test('schema version is 1', () {
-      expect(db.schemaVersion, 1);
+    test('schema version is 2', () {
+      expect(db.schemaVersion, 2);
     });
 
     test('memories has exactly the documented columns', () async {
@@ -54,6 +54,7 @@ void main() {
         'deleted_at',
         'owner_user_id',
         'sync_status',
+        'server_updated_at',
       ]);
     });
 
