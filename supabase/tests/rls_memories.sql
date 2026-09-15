@@ -18,8 +18,9 @@
 --   policy is precise, not merely closed.
 --
 -- Covers docs/12_SECURITY.md section 3.3 for the M5b tables, B-13 from
--- docs/14_M5B_RECONCILIATION.md section 2.2, and the immutability, no-restore
--- and 10,000 code-point rules. B-8 (expired JWT) and B-11 (direct PostgREST)
+-- docs/14_M5B_RECONCILIATION.md section 2.2, the immutability, no-restore
+-- and 10,000 code-point rules, and the push_memory function (P-7, P-8, B-15,
+-- B-2c, I-7). Run after all three migrations. B-8 (expired JWT) and B-11 (direct PostgREST)
 -- need a real HTTP request and are tested separately.
 
 drop table if exists pg_temp.rls_results;
@@ -38,6 +39,8 @@ declare
   b        uuid := gen_random_uuid();
   a_mem    uuid := gen_random_uuid();
   a_tomb   uuid := gen_random_uuid();
+  a_push   uuid := gen_random_uuid();
+  a_bad    uuid := gen_random_uuid();
   b_mem    uuid := gen_random_uuid();
   n        integer;
   denied   boolean;
@@ -153,9 +156,72 @@ begin
      case when denied then 'denied' else 'allowed' end,
      case when denied then 'FAIL' else 'PASS' end);
 
+  -- P-7 A pushes a memory with an entity through push_memory
+  perform set_config('role', 'authenticated', true);
+  denied := false;
+  begin
+    ts_after := public.push_memory(
+      a_push, 'A pushed 012-3456789', 'share', null, now(),
+      jsonb_build_array(jsonb_build_object(
+        'id', gen_random_uuid(), 'type', 'phone', 'raw_value', '012-3456789',
+        'normalized_value', '+60123456789', 'confidence', 0.95,
+        'start_offset', 9, 'end_offset', 20)));
+  exception when others then denied := true;
+  end;
+  execute 'reset role';
+  select count(*) into n from public.memory_entities
+  where memory_id = a_push and user_id = a;
+  insert into rls_results (id, check_, expected, observed, result) values
+    ('P-7', 'A pushes memory + entity via push_memory', 'allowed, 1 entity',
+     case when denied then 'denied' else 'allowed, ' || n || ' entity' end,
+     case when not denied and n = 1 and ts_after is not null
+          then 'PASS' else 'FAIL' end);
+
+  -- P-8 the same push again is idempotent
+  perform set_config('role', 'authenticated', true);
+  denied := false;
+  begin
+    ts_before := public.push_memory(
+      a_push, 'A pushed 012-3456789', 'share', null, now(),
+      jsonb_build_array(jsonb_build_object(
+        'id', gen_random_uuid(), 'type', 'phone', 'raw_value', '012-3456789',
+        'normalized_value', '+60123456789', 'confidence', 0.95,
+        'start_offset', 9, 'end_offset', 20)));
+  exception when others then denied := true;
+  end;
+  execute 'reset role';
+  select count(*) into n from public.memory_entities where memory_id = a_push;
+  insert into rls_results (id, check_, expected, observed, result) values
+    ('P-8', 'repeated push is idempotent', 'allowed, same time, 1 entity',
+     case when denied then 'denied' else 'allowed, ' || n || ' entity' end,
+     case when not denied and n = 1 and ts_before = ts_after
+          then 'PASS' else 'FAIL' end);
+
   -- =========================================================================
   -- Bypass attempts — acting as A against B
   -- =========================================================================
+
+  -- B-15 push_memory with B's memory id, trying to attach entities to it
+  perform set_config('role', 'authenticated', true);
+  denied := false;
+  begin
+    perform public.push_memory(
+      b_mem, 'hijack', 'share', null, now(),
+      jsonb_build_array(jsonb_build_object(
+        'id', gen_random_uuid(), 'type', 'url', 'raw_value', 'x',
+        'normalized_value', 'https://evil.example', 'confidence', 0.99,
+        'start_offset', 0, 'end_offset', 1)));
+  exception when others then denied := true;
+  end;
+  execute 'reset role';
+  select count(*) into n from public.memory_entities where memory_id = b_mem;
+  insert into rls_results (id, check_, expected, observed, result)
+  select 'B-15', 'A pushes using B memory id', 'denied, B unchanged',
+         case when denied then 'denied' else 'allowed' end
+           || ', ' || n || ' entity on B',
+         case when denied and n = 1 and m.content = 'B private memory 012-3456789'
+              then 'PASS' else 'FAIL' end
+  from public.memories m where m.id = b_mem;
 
   -- B-1 read B's memory by id
   perform set_config('role', 'authenticated', true);
@@ -397,6 +463,25 @@ begin
      case when denied then 'denied' else 'allowed' end,
      case when denied then 'PASS' else 'FAIL' end);
 
+  -- I-7 a push with one invalid entity leaves nothing behind (atomic)
+  perform set_config('role', 'authenticated', true);
+  denied := false;
+  begin
+    perform public.push_memory(
+      a_bad, 'half a push', 'paste', null, now(),
+      jsonb_build_array(jsonb_build_object(
+        'id', gen_random_uuid(), 'type', 'phone', 'raw_value', 'x',
+        'normalized_value', '+60123456789', 'confidence', 0.9,
+        'start_offset', 5, 'end_offset', 2)));
+  exception when others then denied := true;
+  end;
+  execute 'reset role';
+  select count(*) into n from public.memories where id = a_bad;
+  insert into rls_results (id, check_, expected, observed, result) values
+    ('I-7', 'push with invalid entity is all-or-nothing', 'denied, 0 rows',
+     case when denied then 'denied' else 'allowed' end || ', ' || n || ' row(s)',
+     case when denied and n = 0 then 'PASS' else 'FAIL' end);
+
   -- =========================================================================
   -- Anonymous — no JWT at all
   -- =========================================================================
@@ -430,6 +515,27 @@ begin
     ('B-2b', 'anon inserts memory', 'denied',
      case when denied then 'denied' else 'allowed' end,
      case when denied then 'PASS' else 'FAIL' end);
+
+  -- B-2c anon calls push_memory
+  perform set_config('role', 'anon', true);
+  denied := false;
+  begin
+    perform public.push_memory(
+      gen_random_uuid(), 'anon push', 'share', null, now(), '[]'::jsonb);
+  exception when others then denied := true;
+  end;
+  execute 'reset role';
+  -- Denied is not enough on its own: the function also refuses a null caller.
+  -- The grant itself must be absent.
+  insert into rls_results (id, check_, expected, observed, result) values
+    ('B-2c', 'anon calls push_memory', 'denied, no EXECUTE grant',
+     case when denied then 'denied' else 'allowed' end || ', grant '
+       || case when has_function_privilege('anon',
+            'public.push_memory(uuid, text, text, text, timestamptz, jsonb)',
+            'execute') then 'present' else 'absent' end,
+     case when denied and not has_function_privilege('anon',
+            'public.push_memory(uuid, text, text, text, timestamptz, jsonb)',
+            'execute') then 'PASS' else 'FAIL' end);
 
   -- -------------------------------------------------------------------------
   -- Cleanup: removes both test users and, by cascade, every row they made

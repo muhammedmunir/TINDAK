@@ -31,12 +31,13 @@ Run in filename order, each exactly once:
 |---|---|
 | `migrations/20260915000001_memories.sql` | `memories`, `memory_entities`, server-time and immutability triggers |
 | `migrations/20260915000002_memories_rls.sql` | RLS, least-privilege grants, policies |
+| `migrations/20260915000003_push_memory.sql` | `push_memory()` — a memory and its entities in one transaction, running under the caller's RLS |
 
 A migration that has run is never edited. A change is a new, later file.
 
 ## Running the security tests
 
-After both migrations, paste `tests/rls_memories.sql` into the SQL Editor and
+After all three migrations, paste `tests/rls_memories.sql` into the SQL Editor and
 run it. The result grid lists every check; **every row must read PASS**.
 
 Record the grid in `docs/20_TEST_PLAN.md` §9 under a dated heading. M5b does not
