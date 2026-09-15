@@ -2,17 +2,19 @@
 
 **Owner:** Shared governance
 **Status:** ARCHITECTURE LOCKED — 2026-09-10
-ADR-001…ADR-028 Accepted · PD-001…PD-031 Accepted
+ADR-001…ADR-030 Accepted · PD-001…PD-040 Accepted
 
 Three registers, all binding:
 
 - **ADR-001…ADR-012** — founding decisions from the master plan.
-- **PD-001…PD-031** — product decisions. PD-001…PD-022 locked with Product Pack
+- **PD-001…PD-040** — product decisions. PD-001…PD-022 locked with Product Pack
   V1; PD-023…PD-029 from the Product Direction review of the Technical Pack;
-  PD-030…PD-031 from the final review.
+  PD-030…PD-031 at Architecture Lock; PD-032…PD-040 from milestone reviews.
 - **ADR-013…ADR-028** — architecture decisions from the Technical Pack.
   Product Direction passed them and the CEO locked them on 2026-09-10. They are
   binding for V1 unless superseded by a later CEO-approved decision.
+- **ADR-029…ADR-030** — amendments accepted during implementation (ADR-003 at
+  M2, ADR-015's search mechanism at M5a).
 
 An accepted decision is binding until the CEO explicitly changes it (AI Rule
 14). Decisions are appended, never edited in place; to reverse one, add a new
@@ -231,6 +233,43 @@ translated.
 Approved failure copy: **"Tindakan ini tidak dapat dibuka pada peranti ini."** —
 short, does not blame the user, and does not claim a cause TINDAK cannot know.
 
+## PD-038…PD-040 — added by the M5a Product Direction review
+
+### PD-038 — Memory search is deterministic local LIKE search
+The V1 search baseline is local `LIKE`-based matching over the original text and
+approved searchable entity values (ADR-030). A saved `Hubungi 012-345 6789` must
+be found by `0123456789`; that requirement outranks the earlier choice of FTS5.
+FTS5 is deferred and reconsidered only if real data or performance shows a
+need. **Do not add FTS5 in parallel "for the future"** — it adds an index,
+migrations and a consistency risk with no present requirement.
+
+### PD-039 — Persisted Memory content is at most 10,000 characters
+One contract for content, locally and in the cloud: a saved Memory holds at
+most 10,000 characters. Oversized content is **refused explicitly at Save** and
+is **never silently truncated** on save or on sync.
+
+Copy: **"Teks terlalu panjang untuk disimpan. Had ialah 10,000 aksara."**
+
+This governs what may be persisted, not what may be received and displayed —
+intake display behaviour from M2 is unchanged.
+
+Technical definition, recorded so every layer agrees: a character is a Unicode
+code point. SQLite's `length()` and Postgres's `char_length()` count code
+points; Dart's `String.length` counts UTF-16 units, where one emoji is two. The
+limit is enforced by the repository and by a database `CHECK`, so bypassing the
+UI or the repository cannot store more.
+
+### PD-040 — Only concurrent Save activation may be suppressed
+A Save tap that arrives while a Save is still in flight may be ignored. That is
+concurrency protection, not deduplication. Two separate, completed explicit
+saves still create two memories, and TINDAK performs **no content-based
+duplicate suppression**. While a save is in flight, Simpan is disabled and shows
+progress, so the user can see a second tap is not accepted.
+
+### M5a UI copy — approved
+All M5a copy as submitted, with one change: delete failure reads **"Item tidak
+dapat dipadam. Cuba lagi."**, so a recoverable failure names the next step.
+
 ---
 
 # Part 3 — Architecture Decisions (Accepted at Architecture Lock, 2026-09-10)
@@ -439,6 +478,28 @@ keeps every detector, action and screen downstream ignorant of where text came
 from.
 
 **Status:** Accepted — CEO and Product Direction, 2026-09-10.
+
+## ADR-030 — Amends ADR-015: Memory search uses LIKE, not FTS5
+**Decision:** Local Memory search matches original text with
+`LIKE %query%`, and entity values through a derived, lowercased
+`search_value` column that holds the forms a person would type — for a phone,
+both the national and international digits. Queries of three or more digits are
+also matched as numbers. Wildcards in the query are escaped.
+
+**Why:** FTS5's tokeniser splits `012-345 6789` into three tokens, so searching
+`0123456789` — how Malaysians write a number — would find nothing. FTS5 also
+matches only token prefixes, and needs a virtual table kept in step by triggers
+that can silently desynchronise. A personal memory list is small enough that a
+linear scan is well under a frame.
+
+**What does not change:** Drift over SQLite (ADR-015) stands. Search stays
+local, deterministic and non-AI (PD-004).
+
+**Revisit:** if real usage reaches sizes where search is measurably slow.
+
+**Detail:** `11_DATABASE.md` §3.1.
+**Status:** Accepted — Product Direction and CEO, M5a review. Amends ADR-015's
+search mechanism only; Drift over SQLite stands. See PD-038.
 
 ---
 

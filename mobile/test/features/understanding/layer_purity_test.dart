@@ -73,6 +73,23 @@ void main() {
     );
   });
 
+  test('nothing in the app talks to a network yet (M5a)', () {
+    // Local Memory must work with no network permission and no connection.
+    // Cloud sync is M5b; a network client arriving early because "sync is
+    // coming" is exactly what this milestone forbids.
+    final network = <RegExp>[
+      RegExp(r'''import\s+['"]package:supabase'''),
+      RegExp(r'''import\s+['"]package:http/'''),
+      RegExp(r'''import\s+['"]package:dio/'''),
+      RegExp(r'''import\s+['"]package:web_socket'''),
+      RegExp(r'''import\s+['"]package:firebase'''),
+      RegExp(r'\bHttpClient\b'),
+      RegExp(r'\bSocket\.connect\b'),
+    ];
+
+    expect(violations('lib', network), isEmpty);
+  });
+
   test('url_launcher is used in exactly one file', () {
     // docs/10_ARCHITECTURE.md section 6: the executor is the only place that
     // touches url_launcher.

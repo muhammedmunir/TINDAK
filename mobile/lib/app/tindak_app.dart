@@ -5,13 +5,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:tindak/app/routes.dart';
 import 'package:tindak/app/theme.dart';
-import 'package:tindak/features/actions/executor/action_runner.dart';
-import 'package:tindak/features/actions/model/action_descriptor.dart';
+import 'package:tindak/features/actions/widgets/entity_row.dart' as actions;
 import 'package:tindak/features/home/home_screen.dart';
 import 'package:tindak/features/intake/incoming_text.dart';
 import 'package:tindak/features/intake/intake_controller.dart';
 import 'package:tindak/features/intake/intake_result_screen.dart';
 import 'package:tindak/features/intake/intake_understanding.dart';
+import 'package:tindak/features/memory/memory_detail_screen.dart';
+import 'package:tindak/features/memory/memory_providers.dart';
+import 'package:tindak/features/understanding/model/understanding_result.dart';
 
 /// The application shell.
 class TindakApp extends ConsumerStatefulWidget {
@@ -29,7 +31,8 @@ class _TindakAppState extends ConsumerState<TindakApp> {
     // Deliberately not awaited: the shell paints immediately and the share
     // arrives when the platform answers.
     //
-    // This reads no clipboard, and nothing on a lifecycle path may (ADR-004).
+    // This reads no clipboard and saves nothing, and nothing on a lifecycle
+    // path may (ADR-004, PD-003).
     unawaited(ref.read(intakeControllerProvider.notifier).start());
   }
 
@@ -41,8 +44,16 @@ class _TindakAppState extends ConsumerState<TindakApp> {
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       initialRoute: Routes.home,
-      routes: <String, WidgetBuilder>{
-        Routes.home: (_) => const IntakeGate(),
+      routes: <String, WidgetBuilder>{Routes.home: (_) => const IntakeGate()},
+      onGenerateRoute: (settings) {
+        final id = settings.arguments;
+        if (settings.name == Routes.memoryDetail && id is String) {
+          return MaterialPageRoute<void>(
+            settings: settings,
+            builder: (_) => MemoryDetailScreen(id: id),
+          );
+        }
+        return null;
       },
     );
   }
@@ -56,51 +67,77 @@ class _TindakAppState extends ConsumerState<TindakApp> {
 class IntakeGate extends ConsumerWidget {
   const IntakeGate({super.key});
 
+  /// Kept here for existing callers; the message lives with the shared action
+  /// feedback.
+  static const String actionUnavailableMessage =
+      actions.actionUnavailableMessage;
+
+  static const String savedMessage = 'Disimpan pada peranti ini.';
+  static const String saveFailedMessage = 'Tidak dapat menyimpan. Cuba lagi.';
+
+  /// PD-039. Says what the limit is, so the user knows what to change.
+  static const String tooLongMessage =
+      'Teks terlalu panjang untuk disimpan. Had ialah 10,000 aksara.';
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final IncomingText? incoming = ref.watch(intakeControllerProvider);
+    // A share or paste can arrive while a Memory detail is open. Bring the
+    // user back to the root so they see what they just sent, instead of it
+    // landing out of sight behind the detail screen.
+    ref.listen<IncomingText?>(intakeControllerProvider, (previous, next) {
+      if (next != null && previous != next) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
+    });
 
+    final IncomingText? incoming = ref.watch(intakeControllerProvider);
     if (incoming == null) return const HomeScreen();
+
+    final understanding = ref.watch(intakeUnderstandingProvider);
 
     return IntakeResultScreen(
       incoming: incoming,
-      understanding: ref.watch(intakeUnderstandingProvider),
-      onAction: (action) => _runAction(context, ref, action),
+      understanding: understanding,
+      onAction: (action) => actions.runActionWithFeedback(context, ref, action),
+      onSave: understanding == null
+          ? null
+          : () => _save(context, ref, incoming, understanding),
+      isSaving: ref.watch(memorySavingProvider),
       onClose: () => ref.read(intakeControllerProvider.notifier).clear(),
     );
   }
 
-  /// Shown when an action could not be carried out.
+  /// Saves because the user pressed Simpan — the only path by which a memory
+  /// is created (PD-003).
   ///
-  /// One quiet line. TINDAK stays open and the result stays on screen, so the
-  /// user can still read the number or link and use it another way.
-  static const String actionUnavailableMessage =
-      'Tindakan ini tidak dapat dibuka pada peranti ini.';
-
-  /// Runs an action because the user pressed its button — the only path by
-  /// which TINDAK launches another app.
-  ///
-  /// TINDAK is never closed afterwards. Android keeps it in recents and the
-  /// back gesture returns to this result (PD-014).
-  static Future<void> _runAction(
+  /// The result stays on screen afterwards. Pressing Simpan again saves again:
+  /// two presses are two decisions, and nothing is deduplicated.
+  static Future<void> _save(
     BuildContext context,
     WidgetRef ref,
-    ActionDescriptor action,
+    IncomingText incoming,
+    UnderstandingResult understanding,
   ) async {
     final messenger = ScaffoldMessenger.of(context);
-    final outcome = await ref.read(actionRunnerProvider).run(action);
+    final outcome = await ref
+        .read(memorySaverProvider)
+        .save(incoming: incoming, understanding: understanding);
 
     switch (outcome) {
-      case ActionOutcome.launched:
-      case ActionOutcome.busy:
+      case SaveOutcome.busy:
         return;
-      case ActionOutcome.rejected:
-      case ActionOutcome.unavailable:
+      case SaveOutcome.saved:
         messenger
           ..hideCurrentSnackBar()
-          ..showSnackBar(
-            const SnackBar(content: Text(actionUnavailableMessage)),
-          );
+          ..showSnackBar(const SnackBar(content: Text(savedMessage)));
+      case SaveOutcome.tooLong:
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text(tooLongMessage)));
+      case SaveOutcome.failed:
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text(saveFailedMessage)));
     }
   }
 }

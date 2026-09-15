@@ -1,17 +1,16 @@
 /// Route names.
 ///
 /// Navigator 1.0 with a named route table, no routing package (ADR-018).
-/// Five screens, no nested navigators, and the share entry point arrives as an
-/// Android intent rather than a deep link.
 final class Routes {
   const Routes._();
 
-  /// Home and empty state. The launcher entry point.
+  /// Home — Memory, or the empty state before anything is saved. The share
+  /// and paste result is swapped in over it rather than pushed.
   static const String home = '/';
 
+  /// One saved item. Argument: the memory id.
+  static const String memoryDetail = '/memory';
+
   // Added by their own milestones:
-  //   shareResult  M2
-  //   memory       M5a
-  //   memoryDetail M5a
   //   settings     M5b
 }

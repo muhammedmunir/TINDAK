@@ -2,22 +2,19 @@ import 'package:flutter/material.dart';
 
 import 'package:tindak/features/actions/model/action_descriptor.dart';
 import 'package:tindak/features/actions/resolver/action_resolver.dart';
+import 'package:tindak/features/actions/widgets/entity_row.dart';
 import 'package:tindak/features/intake/incoming_text.dart';
-import 'package:tindak/features/understanding/model/detected_entity.dart';
-import 'package:tindak/features/understanding/model/entity_type.dart';
 import 'package:tindak/features/understanding/model/understanding_result.dart';
 
-/// Shows the text TINDAK received, what it understood, and what the user can
-/// do with each thing it found.
+/// Shows the text TINDAK received, what it understood, what the user can do
+/// with each thing it found, and the option to keep it.
 ///
 /// Identical presentation for a share and a paste — the user is looking at
 /// their own text and does not need to be told which door it came through.
 ///
-/// **Every external action is a visible, labelled button the user presses.**
-/// Nothing launches on render, on detection, or on resume. The entity row
-/// itself is not a tap target: a user who taps a phone number to read it must
-/// not find the dialer open. Save, Security Check and Try AI are later
-/// milestones and do not appear here.
+/// **Every external action, and saving, is a visible button the user
+/// presses.** Nothing launches or saves on render, on detection, or on resume.
+/// The entity row itself is not a tap target.
 ///
 /// Full-screen, not an overlay over the source app (PD-013).
 ///
@@ -29,6 +26,8 @@ class IntakeResultScreen extends StatelessWidget {
     required this.incoming,
     this.understanding,
     this.onAction,
+    this.onSave,
+    this.isSaving = false,
     this.onClose,
     this.resolver = const ActionResolver(),
     super.key,
@@ -43,12 +42,22 @@ class IntakeResultScreen extends StatelessWidget {
   static const String nothingDetectedMessage =
       'TINDAK belum dapat mengenal pasti tindakan untuk kandungan ini.';
 
+  static const String saveLabel = 'Simpan';
+
   final IncomingText incoming;
   final UnderstandingResult? understanding;
 
   /// Called when the user presses an action button. When null, no action
   /// buttons are shown at all.
   final void Function(ActionDescriptor action)? onAction;
+
+  /// Called when the user presses Simpan. When null, Simpan is not shown.
+  final VoidCallback? onSave;
+
+  /// True while a save is being written. Simpan is disabled and shows progress,
+  /// so a second tap is visibly not accepted (PD-040).
+  final bool isSaving;
+
   final VoidCallback? onClose;
   final ActionResolver resolver;
 
@@ -104,7 +113,7 @@ class IntakeResultScreen extends StatelessWidget {
                   const _SectionLabel('Dikesan'),
                   const SizedBox(height: 8),
                   for (final entity in result.entities)
-                    _EntityRow(
+                    EntityRow(
                       entity: entity,
                       actions: onAction == null
                           ? const <ActionDescriptor>[]
@@ -112,6 +121,21 @@ class IntakeResultScreen extends StatelessWidget {
                       onAction: onAction,
                     ),
                 ],
+              ],
+              // Saving is offered whether or not anything was detected: plain
+              // text is worth remembering too (PRD section 18).
+              if (onSave != null) ...<Widget>[
+                const SizedBox(height: 28),
+                FilledButton.icon(
+                  onPressed: isSaving ? null : onSave,
+                  icon: isSaving
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.bookmark_add_outlined),
+                  label: const Text(saveLabel),
+                ),
               ],
             ],
           ),
@@ -135,98 +159,5 @@ class _SectionLabel extends StatelessWidget {
         color: theme.colorScheme.onSurfaceVariant,
       ),
     );
-  }
-}
-
-/// One detected entity and its actions.
-///
-/// The row is not tappable. Only the labelled buttons beneath it act, and each
-/// button carries its own entity — so in a message with two numbers, Call on
-/// the second row can only dial the second number.
-class _EntityRow extends StatelessWidget {
-  const _EntityRow({
-    required this.entity,
-    required this.actions,
-    required this.onAction,
-  });
-
-  final DetectedEntity entity;
-  final List<ActionDescriptor> actions;
-  final void Function(ActionDescriptor action)? onAction;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final (IconData icon, String label, String value) = switch (entity.type) {
-      EntityType.phone => (Icons.phone_outlined, 'Telefon', entity.rawValue),
-      // UX section 6 shows the host. It is the part of a link that decides
-      // where it really goes, and the part a lookalike tries to disguise.
-      EntityType.url => (Icons.link, 'Pautan', _hostOf(entity.normalizedValue)),
-    };
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: <Widget>[
-          Padding(
-            padding: const EdgeInsets.only(top: 2),
-            child: Icon(icon, size: 22, color: theme.colorScheme.primary),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: <Widget>[
-                Text(value, style: theme.textTheme.bodyLarge),
-                Text(
-                  label,
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                if (actions.isNotEmpty) ...<Widget>[
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: <Widget>[
-                      for (final action in actions)
-                        OutlinedButton.icon(
-                          key: ValueKey<String>(
-                            'action-${action.kind.name}-${entity.start}',
-                          ),
-                          onPressed: () => onAction?.call(action),
-                          icon: Icon(_iconFor(action.kind), size: 18),
-                          label: Text(_labelFor(action.kind)),
-                        ),
-                    ],
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Malay labels, approved by Product Direction at the M4 review (PD-037).
-  /// WhatsApp is a brand name and stays as it is.
-  static String _labelFor(ActionKind kind) => switch (kind) {
-    ActionKind.call => 'Panggil',
-    ActionKind.whatsapp => 'WhatsApp',
-    ActionKind.openUrl => 'Buka',
-  };
-
-  static IconData _iconFor(ActionKind kind) => switch (kind) {
-    ActionKind.call => Icons.call_outlined,
-    ActionKind.whatsapp => Icons.chat_outlined,
-    ActionKind.openUrl => Icons.open_in_new,
-  };
-
-  static String _hostOf(String url) {
-    final host = Uri.tryParse(url)?.host;
-    return (host == null || host.isEmpty) ? url : host;
   }
 }
