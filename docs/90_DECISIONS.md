@@ -616,6 +616,15 @@ guest memories.
 ### M5b copy baseline (Product Direction)
 Sign-in, OTP, Settings, save and status copy as listed in the M5b review, and
 the OTP email in `mobile/README.md`. Supabase errors are never shown to users.
+Also approved: "Masukkan e-mel anda. Kami akan menghantar kod 6 digit.",
+"Sahkan", "Hantar semula kod", "Tukar e-mel", "Kod baharu telah dihantar.",
+"E-mel tidak sah.", "Terlalu banyak cubaan. Tunggu sebentar dan cuba lagi."
+
+### M5b database access (Product Direction and CEO, 2026-09-15)
+Direct production database access for Claude Code is **not approved**. The
+original arrangement stands: Claude writes SQL, the CEO runs it in the Supabase
+SQL Editor and returns only the result grid. A database password that entered a
+chat transcript is reset immediately. No permission rule for Postgres is added.
 
 ---
 
