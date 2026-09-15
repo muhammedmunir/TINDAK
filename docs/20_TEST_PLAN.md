@@ -393,9 +393,11 @@ Environment: the single Supabase project (CEO decision). Run order
 
 #### Supabase migrations and RLS matrix — PENDING (CEO runs)
 
-Paste the result grid here under a dated heading. Every row must be PASS:
-P-1…P-8, B-1, B-2, B-2b, B-2c, B-3…B-7, B-5b, B-12, B-13, B-13b, B-14, B-15,
-I-1…I-7, S-1, Z-1.
+Paste the result grid here under a dated heading. The grid has exactly
+**32 rows** and every row must be PASS:
+P-1…P-8 (8), B-1, B-2, B-2b, B-2c, B-3…B-7, B-5b, B-12, B-13, B-13b, B-14,
+B-15 (15), I-1…I-7 (7), S-1, Z-1 (2). A grid with fewer rows means the script
+stopped early and is a failure.
 
 #### Live end-to-end — PENDING (CEO with Claude)
 
