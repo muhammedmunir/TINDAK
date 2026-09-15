@@ -2,7 +2,7 @@
 
 **Owner:** Shared governance
 **Status:** ARCHITECTURE LOCKED — 2026-09-10
-ADR-001…ADR-032 Accepted · PD-001…PD-045 Accepted
+ADR-001…ADR-032 Accepted · PD-001…PD-046 Accepted
 
 Three registers, all binding:
 
@@ -626,6 +626,23 @@ original arrangement stands: Claude writes SQL, the CEO runs it in the Supabase
 SQL Editor and returns only the result grid. A database password that entered a
 chat transcript is reset immediately. No permission rule for Postgres is added.
 **Status:** Superseded by the CEO override below.
+
+### PD-046 — Authentication email goes through custom SMTP; Resend first
+TINDAK V1 uses custom SMTP for Supabase authentication email. Resend is the
+initial provider. Supabase's default sender is unsuitable: this Free-tier project
+cannot customise authentication templates with it, and its sending limit is
+unsuitable for testing and production.
+
+Supabase Auth stays the identity system; Resend is email transport only. No
+second authentication system, user store or application email subsystem.
+ADR-020 stands: email OTP, exactly six digits, anonymous sign-in disabled.
+Authentication email only in M5b — no marketing, newsletter or notification
+email. Supabase is not upgraded solely for email. Credentials stay local and
+git-ignored, never in Flutter, Git or logs.
+
+**Before inviting anyone other than the CEO:** the sending domain must be
+verified in Resend (SPF, DKIM, DMARC) and the sender switched from Resend's
+test address, which delivers only to the Resend account owner.
 
 ### CEO OVERRIDE — TINDAK Supabase project administration (2026-09-15)
 **Decision:** Claude Code may administer the **TINDAK Supabase project** for

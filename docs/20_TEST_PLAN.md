@@ -475,6 +475,20 @@ or configure a custom SMTP provider."* With the default templates the email has
 no code, so real OTP sign-in cannot be tested. Escalated to the CEO: custom SMTP
 or plan upgrade.
 
+**Resolved by PD-046 (custom SMTP, Resend), read back after configuration:**
+
+| Item | Value |
+|---|---|
+| SMTP | enabled — `smtp.resend.com:465`, user `resend`, password set (not printed) |
+| Sender | `TINDAK <onboarding@resend.dev>` — Resend test sender, delivers only to the Resend account owner; domain `muhammedmunir.my` DNS pending |
+| OTP length / expiry | 6 digits / 3600 s |
+| Magic Link subject + body | `Kod log masuk TINDAK`, body exactly the approved copy |
+| Confirm signup subject + body | `Kod log masuk TINDAK`, body exactly the approved copy |
+| Email send limit | raised from 2 to 30 per hour; verify limit 30 per hour |
+| Email sign-in / anonymous sign-in | on / off |
+
+Real OTP delivery and verification: pending, scenario 2 below.
+
 #### Live end-to-end — PENDING (CEO with Claude)
 
 | # | Scenario | Expected | Result |
