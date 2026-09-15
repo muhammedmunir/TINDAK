@@ -457,6 +457,24 @@ P-1…P-8 (8), B-1, B-2, B-2b, B-2c, B-3…B-7, B-5b, B-12, B-13, B-13b, B-14,
 B-15 (15), I-1…I-7 (7), S-1, Z-1 (2). A grid with fewer rows means the script
 stopped early and is a failure.
 
+#### Auth email configuration (2026-09-15) — BLOCKED
+
+Through the Management API, project `bgagjiefhfkxrabmaipz` confirmed first.
+
+| Item | Before | After |
+|---|---|---|
+| OTP length | 8 digits (would break ADR-020 and the six-digit app) | **6** |
+| OTP expiry | 3600 s | unchanged |
+| Magic Link / Confirm signup templates | Supabase default: link only, no `{{ .Token }}` | **unchanged — refused** |
+| Custom SMTP | not set | not set |
+| Email send rate limit | 2 per hour (built-in sender) | unchanged |
+
+The template update was refused: *"Email template modification is not available
+for free tier projects using the default email provider. Please upgrade your plan
+or configure a custom SMTP provider."* With the default templates the email has
+no code, so real OTP sign-in cannot be tested. Escalated to the CEO: custom SMTP
+or plan upgrade.
+
 #### Live end-to-end — PENDING (CEO with Claude)
 
 | # | Scenario | Expected | Result |
