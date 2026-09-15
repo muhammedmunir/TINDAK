@@ -2,19 +2,19 @@
 
 **Owner:** Shared governance
 **Status:** ARCHITECTURE LOCKED — 2026-09-10
-ADR-001…ADR-030 Accepted · PD-001…PD-040 Accepted
+ADR-001…ADR-031 Accepted · PD-001…PD-045 Accepted
 
 Three registers, all binding:
 
 - **ADR-001…ADR-012** — founding decisions from the master plan.
-- **PD-001…PD-040** — product decisions. PD-001…PD-022 locked with Product Pack
+- **PD-001…PD-045** — product decisions. PD-001…PD-022 locked with Product Pack
   V1; PD-023…PD-029 from the Product Direction review of the Technical Pack;
-  PD-030…PD-031 at Architecture Lock; PD-032…PD-040 from milestone reviews.
+  PD-030…PD-031 at Architecture Lock; PD-032…PD-045 from milestone reviews.
 - **ADR-013…ADR-028** — architecture decisions from the Technical Pack.
   Product Direction passed them and the CEO locked them on 2026-09-10. They are
   binding for V1 unless superseded by a later CEO-approved decision.
-- **ADR-029…ADR-030** — amendments accepted during implementation (ADR-003 at
-  M2, ADR-015's search mechanism at M5a).
+- **ADR-029…ADR-031** — amendments accepted during implementation (ADR-003 at
+  M2, ADR-015's search mechanism at M5a, ADR-022's sign-out at M5b).
 
 An accepted decision is binding until the CEO explicitly changes it (AI Rule
 14). Decisions are appended, never edited in place; to reverse one, add a new
@@ -270,6 +270,61 @@ progress, so the user can see a second tap is not accepted.
 All M5a copy as submitted, with one change: delete failure reads **"Item tidak
 dapat dipadam. Cuba lagi."**, so a recoverable failure names the next step.
 
+## PD-041…PD-045 — added by the M5b reconciliation review
+
+### PD-041 — Sign-out is fail-safe
+TINDAK must not complete sign-out while account-owned changes remain
+unacknowledged by the cloud. Sign-out attempts a sync first. If it cannot
+complete, the user stays signed in and sees:
+
+> **Belum dapat log keluar**
+> Ada perubahan yang belum disimpan ke cloud. Sambungkan internet dan cuba lagi
+> supaya data anda tidak hilang.
+
+**[Cuba Lagi] [Batal]**. There is **no "sign out anyway"** in V1. Deleting unsynced
+data to honour PD-017 would trade one promise for silent data loss; blocking
+keeps both.
+
+### PD-042 — Saves while signed in sync automatically, after explicit Save
+Pressing Simpan while signed in commits locally first and makes the memory
+eligible for automatic cloud sync. This is transport after the user's
+decision, not auto-save: the user still chooses what is kept (PD-003). A network
+failure must never make the local Save fail; the memory waits as pending.
+
+### PD-043 — Minimal Settings for Account and Cloud Sync
+A minimal Settings screen holds exactly: **Akaun** (sign in, or the signed-in
+email and sign out) and **Cloud Sync** (status, Sync Sekarang when relevant, and
+resuming a deferred guest migration). Not a dashboard. Memory and search stay
+unified — no Local/Cloud tabs.
+
+### PD-044 — Guest migration needs explicit confirmation; declining is a no-op
+After sign-in, when device-local guest memories exist:
+
+> **Sync memori ke akaun?**
+> Anda mempunyai **{count} item** yang disimpan pada peranti ini. Sync ke akaun
+> supaya item ini boleh tersedia apabila anda menggunakan TINDAK dengan akaun
+> anda.
+
+**[Bukan Sekarang] [Sync]**. The count is dynamic. No prompt when the count is
+zero. **Bukan Sekarang** performs no ownership change, no upload and no
+background migration of guest rows.
+
+### PD-045 — Shared devices: explicit migration assigns guest items to the signed-in account
+TINDAK cannot know which person created a guest memory before any identity
+existed, and does not invent one. Whoever is signed in and explicitly presses
+Sync takes the device's guest items into that account. The prompt says "item
+yang disimpan pada peranti ini", never "memori anda", so the consequence is
+visible.
+
+### M5b operating notes (Product Direction)
+- One Supabase project is accepted for Founder Alpha. Security scripts that
+  create and clean up test users may run there now, while it holds no real
+  users. **Before closed beta, development and testing are separated from
+  production.**
+- The publishable key may ship in the client. Service-role keys, database
+  credentials and private secrets never enter Flutter or Git history. Client
+  values reach the app through build-time configuration, not hardcoded source.
+
 ---
 
 # Part 3 — Architecture Decisions (Accepted at Architecture Lock, 2026-09-10)
@@ -478,6 +533,25 @@ keeps every detector, action and screen downstream ignorant of where text came
 from.
 
 **Status:** Accepted — CEO and Product Direction, 2026-09-10.
+
+## ADR-031 — Amends ADR-022: sign-out is blocked until the account is safe to clear
+**Decision:** ADR-022 deleted every account-owned row on sign-out on the
+assumption that "the cloud copy is intact". That is false for a row still
+pending — saved offline, or deleted offline. Sign-out now:
+
+```text
+account rows still pending?
+  no  ─► purge account rows ─► clear sync state ─► end session
+  yes ─► sync ─► still pending? ─► stay signed in, explain (PD-041)
+                    │
+                    no ─► purge ─► clear ─► end session
+```
+
+Local rows are purged **before** the session ends. If ending the session failed
+after the purge, the user is left signed in with nothing to leak; the reverse
+order could leave account data readable after sign-out (PD-017).
+
+**Status:** Accepted — Product Direction M5b review (PD-041).
 
 ## ADR-030 — Amends ADR-015: Memory search uses LIKE, not FTS5
 **Decision:** Local Memory search matches original text with

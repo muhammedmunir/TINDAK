@@ -1,7 +1,7 @@
 # 14 — M5b RECONCILIATION
 
 **Owner:** Technical Lead (Claude)
-**Status:** FOR PRODUCT DIRECTION AND CEO REVIEW — steps 1–2 built, steps 5–7 wait on §4
+**Status:** APPROVED by Product Direction — D-1…D-5 decided as PD-041…PD-045
 **Date:** 2026-09-15
 **Inputs:** M5a as merged (`develop` at `7c5fb27`), `10_ARCHITECTURE.md` §8,
 `11_DATABASE.md` §2–§3, `12_SECURITY.md` §3 and §5, `13_API.md` §1–§2,
