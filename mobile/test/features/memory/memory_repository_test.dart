@@ -136,11 +136,102 @@ void main() {
       expect(await list(), hasLength(2));
     });
 
-    test('stores a share longer than the understanding cap in full', () async {
-      final long = 'a' * (UnderstandingEngine.defaultMaxInputLength + 2000);
-      final id = await save(pasted(long));
+    group('content limit — PD-039', () {
+      const limit = TindakDatabase.maxContentLength;
 
-      expect((await repo.findById(id)).valueOrNull!.content.length, long.length);
+      test('exactly the limit is saved in full', () async {
+        final atLimit = 'a' * limit;
+        final id = await save(pasted(atLimit));
+
+        expect((await repo.findById(id)).valueOrNull!.content, atLimit);
+      });
+
+      test('one character over the limit is refused, not truncated', () async {
+        final over = 'a' * (limit + 1);
+
+        final result = await repo.save(
+          incoming: pasted(over),
+          understanding: engine.understand(over),
+        );
+
+        expect(result.failureOrNull, const ContentTooLongFailure(limit));
+        expect(await db.select(db.memories).get(), isEmpty);
+        expect(await db.select(db.memoryEntities).get(), isEmpty);
+      });
+
+      test('a long share is refused rather than saved partially', () async {
+        final long = 'Hubungi 012-3456789 ${'a' * limit}';
+
+        final result = await repo.save(
+          incoming: shared(long),
+          understanding: engine.understand(long),
+        );
+
+        expect(result.isErr, isTrue);
+        expect(await list(), isEmpty);
+      });
+
+      test('the limit counts characters, not UTF-16 units', () async {
+        // Each emoji is one character but two UTF-16 code units. Counting code
+        // units would refuse this, while SQLite and Postgres both accept it —
+        // the app and the database would disagree about the same text.
+        final emoji = '😀' * limit;
+        expect(emoji.length, limit * 2);
+
+        final id = await save(pasted(emoji));
+
+        expect((await repo.findById(id)).valueOrNull!.content, emoji);
+      });
+
+      test('one emoji over the limit is refused', () async {
+        final over = '😀' * (limit + 1);
+
+        final result = await repo.save(
+          incoming: pasted(over),
+          understanding: engine.understand(over),
+        );
+
+        expect(result.failureOrNull, isA<ContentTooLongFailure>());
+      });
+
+      test('the database refuses it even when the repository is bypassed',
+          () async {
+        // The guard that matters: a future code path, a bug, or a direct write
+        // cannot store more than the limit, because SQLite itself refuses.
+        await expectLater(
+          db
+              .into(db.memories)
+              .insert(
+                MemoriesCompanion.insert(
+                  id: '11111111-1111-4111-8111-111111111111',
+                  content: 'a' * (limit + 1),
+                  intakeSource: 'paste',
+                  createdAt: 1,
+                  updatedAt: 1,
+                  syncStatus: 'local_only',
+                ),
+              ),
+          throwsA(isA<Exception>()),
+        );
+        expect(await db.select(db.memories).get(), isEmpty);
+      });
+
+      test('the database accepts exactly the limit when bypassed', () async {
+        await db
+            .into(db.memories)
+            .insert(
+              MemoriesCompanion.insert(
+                id: '11111111-1111-4111-8111-111111111111',
+                content: '😀' * limit,
+                intakeSource: 'paste',
+                createdAt: 1,
+                updatedAt: 1,
+                syncStatus: 'local_only',
+              ),
+            );
+
+        expect(await db.select(db.memories).get(), hasLength(1));
+      });
     });
 
     test('a database failure fails safely', () async {

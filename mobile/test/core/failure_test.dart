@@ -10,6 +10,7 @@ void main() {
         NotFoundFailure(),
         PermissionFailure('notifications'),
         AuthRequiredFailure(),
+        ContentTooLongFailure(10000),
         UnexpectedFailure(),
       ];
 
@@ -25,6 +26,7 @@ void main() {
         'not_found',
         'permission',
         'auth_required',
+        'content_too_long',
         'unexpected',
       ];
 

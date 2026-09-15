@@ -46,9 +46,12 @@ abstract interface class MemoryRepository {
 }
 
 final class DriftMemoryRepository implements MemoryRepository {
-  DriftMemoryRepository(this._db, {required Clock clock, Uuid uuid = const Uuid()})
-    : _clock = clock,
-      _uuid = uuid;
+  DriftMemoryRepository(
+    this._db, {
+    required Clock clock,
+    Uuid uuid = const Uuid(),
+  }) : _clock = clock,
+       _uuid = uuid;
 
   final TindakDatabase _db;
   final Clock _clock;
@@ -64,6 +67,15 @@ final class DriftMemoryRepository implements MemoryRepository {
     required IncomingText incoming,
     required UnderstandingResult understanding,
   }) async {
+    // PD-039: refused, never truncated. Counted in code points to match the
+    // database constraint and the cloud schema. The database enforces the same
+    // limit, so this check is the friendly refusal and the CHECK is the guard.
+    if (incoming.text.runes.length > TindakDatabase.maxContentLength) {
+      return const Result<String>.err(
+        ContentTooLongFailure(TindakDatabase.maxContentLength),
+      );
+    }
+
     final id = _uuid.v4();
     final now = _clock.now().toUtc().millisecondsSinceEpoch;
 
@@ -201,7 +213,9 @@ final class DriftMemoryRepository implements MemoryRepository {
       // deleted and later resurrected by a sync.
       if (row.syncStatus != _localOnly) {
         _log.failure('memory_delete_requires_sync');
-        return const Result<void>.err(UnexpectedFailure('delete_requires_sync'));
+        return const Result<void>.err(
+          UnexpectedFailure('delete_requires_sync'),
+        );
       }
 
       await (_db.delete(_db.memories)..where((m) => m.id.equals(id))).go();
@@ -236,7 +250,10 @@ final class DriftMemoryRepository implements MemoryRepository {
 
     final records = <MemoryRecord>[];
     for (final row in rows) {
-      final record = _toRecord(row, byMemory[row.id] ?? const <DetectedEntity>[]);
+      final record = _toRecord(
+        row,
+        byMemory[row.id] ?? const <DetectedEntity>[],
+      );
       if (record != null) records.add(record);
     }
     return records;
@@ -253,10 +270,14 @@ final class DriftMemoryRepository implements MemoryRepository {
       content: row.content,
       source: source,
       sourceApp: row.sourceApp,
-      createdAt: DateTime.fromMillisecondsSinceEpoch(row.createdAt, isUtc: true)
-          .toLocal(),
-      updatedAt: DateTime.fromMillisecondsSinceEpoch(row.updatedAt, isUtc: true)
-          .toLocal(),
+      createdAt: DateTime.fromMillisecondsSinceEpoch(
+        row.createdAt,
+        isUtc: true,
+      ).toLocal(),
+      updatedAt: DateTime.fromMillisecondsSinceEpoch(
+        row.updatedAt,
+        isUtc: true,
+      ).toLocal(),
       entities: entities,
     );
   }

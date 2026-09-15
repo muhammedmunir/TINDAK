@@ -44,6 +44,13 @@ class TindakDatabase extends _$TindakDatabase {
     }),
   );
 
+  /// Longest content a saved Memory may hold, in Unicode code points (PD-039).
+  ///
+  /// The same number locally and in the cloud schema
+  /// (docs/11_DATABASE.md section 2.2), so nothing saved on a device can later
+  /// be impossible to sync.
+  static const int maxContentLength = 10000;
+
   /// Version 1 is the M5a schema. Every change bumps this and adds an explicit
   /// step to [migration]; a migration that has run on a real device is never
   /// edited (docs/11_DATABASE.md section 6).
@@ -69,7 +76,10 @@ class TindakDatabase extends _$TindakDatabase {
 
 /// One saved item.
 @DataClassName('MemoryRow')
-@TableIndex(name: 'memories_visible_created_idx', columns: {#deletedAt, #createdAt})
+@TableIndex(
+  name: 'memories_visible_created_idx',
+  columns: {#deletedAt, #createdAt},
+)
 class Memories extends Table {
   /// Client-generated UUIDv4, assigned at save and never reassigned.
   TextColumn get id => text()();
@@ -110,6 +120,11 @@ class Memories extends Table {
     // can leave the device (PD-016).
     "CHECK (owner_user_id IS NOT NULL OR sync_status = 'local_only')",
     'CHECK (updated_at >= created_at)',
+    // PD-039: the persisted Memory limit, enforced by the database itself so
+    // no code path — including one that bypasses the repository — can store
+    // more. SQLite's length() counts code points, as Postgres's char_length()
+    // does, so this matches the cloud constraint exactly.
+    'CHECK (length(content) <= ${TindakDatabase.maxContentLength})',
   ];
 }
 

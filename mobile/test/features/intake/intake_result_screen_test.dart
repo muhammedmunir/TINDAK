@@ -332,6 +332,26 @@ void main() {
       expect(find.text('Telefon'), findsOneWidget);
     });
 
+    testWidgets('Simpan is disabled and shows progress while saving',
+        (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: IntakeResultScreen(
+            incoming: sharedOf('x'),
+            onSave: () {},
+            isSaving: true,
+          ),
+        ),
+      );
+
+      final save = find.widgetWithText(
+        FilledButton,
+        IntakeResultScreen.saveLabel,
+      );
+      expect(tester.widget<FilledButton>(save).onPressed, isNull);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    });
+
     testWidgets('buttons fit a narrow viewport without overflow',
         (tester) async {
       tester.view.physicalSize = const Size(320, 640);

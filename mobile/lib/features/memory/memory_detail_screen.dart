@@ -29,7 +29,8 @@ class MemoryDetailScreen extends ConsumerWidget {
   static const String confirmBody = 'Tindakan ini tidak boleh dibatalkan.';
   static const String cancelLabel = 'Batal';
   static const String deletedMessage = 'Item dipadam.';
-  static const String deleteFailedMessage = 'Item tidak dapat dipadam.';
+  static const String deleteFailedMessage =
+      'Item tidak dapat dipadam. Cuba lagi.';
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

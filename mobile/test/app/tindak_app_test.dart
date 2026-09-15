@@ -1,8 +1,12 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:tindak/app/tindak_app.dart';
 import 'package:tindak/core/database/tindak_database.dart';
+import 'package:tindak/core/failure/failure.dart';
+import 'package:tindak/core/result/result.dart';
 import 'package:tindak/features/actions/executor/action_runner.dart';
 import 'package:tindak/features/actions/executor/external_launcher.dart';
 import 'package:tindak/features/home/home_screen.dart';
@@ -10,9 +14,12 @@ import 'package:tindak/features/intake/clipboard_reader.dart';
 import 'package:tindak/features/intake/incoming_text.dart';
 import 'package:tindak/features/intake/intake_controller.dart';
 import 'package:tindak/features/intake/intake_result_screen.dart';
+import 'package:tindak/features/memory/data/memory_repository.dart';
 import 'package:tindak/features/memory/memory_detail_screen.dart';
 import 'package:tindak/features/memory/memory_providers.dart';
+import 'package:tindak/features/memory/model/memory_record.dart';
 import 'package:tindak/features/share/share_channel.dart';
+import 'package:tindak/features/understanding/model/understanding_result.dart';
 
 import '../support/test_database.dart';
 
@@ -75,6 +82,7 @@ Future<TindakDatabase> pumpApp(
   FakeClipboardReader? clipboard,
   RecordingLauncher? launcher,
   TindakDatabase? database,
+  MemoryRepository? repository,
 }) async {
   final db = database ?? openTestDatabase();
   addTearDown(db.close);
@@ -90,6 +98,8 @@ Future<TindakDatabase> pumpApp(
           launcher ?? RecordingLauncher(),
         ),
         databaseProvider.overrideWithValue(db),
+        if (repository != null)
+          memoryRepositoryProvider.overrideWithValue(repository),
       ],
       child: const TindakApp(),
     ),
@@ -669,6 +679,84 @@ void main() {
         expect(await memoryCount(db), 2);
       });
 
+      testWidgets('text over 10,000 characters is refused with the limit '
+          '(PD-039)', (tester) async {
+        final long = 'a' * (TindakDatabase.maxContentLength + 1);
+        final db = await pumpApp(
+          tester,
+          FakeShareChannel(initial: shareOf(1, long)),
+        );
+
+        await pressSave(tester);
+
+        expect(await memoryCount(db), 0);
+        expect(find.text(IntakeGate.tooLongMessage), findsOneWidget);
+        expect(
+          IntakeGate.tooLongMessage,
+          'Teks terlalu panjang untuk disimpan. Had ialah 10,000 aksara.',
+        );
+        // The result stays on screen, so the user still has their text.
+        expect(find.byType(IntakeResultScreen), findsOneWidget);
+      });
+
+      testWidgets('text of exactly 10,000 characters is saved', (tester) async {
+        final db = await pumpApp(
+          tester,
+          FakeShareChannel(
+            initial: shareOf(1, 'a' * TindakDatabase.maxContentLength),
+          ),
+        );
+
+        await pressSave(tester);
+
+        expect(await memoryCount(db), 1);
+      });
+
+      testWidgets('oversized intake is still displayed as before', (tester) async {
+        // PD-039 changes what may be saved, not what is received and shown
+        // (M2's display behaviour is untouched).
+        final long = 'a' * (IntakeResultScreen.displayLimit + 500);
+        await pumpApp(tester, FakeShareChannel(initial: shareOf(1, long)));
+
+        expect(
+          find.textContaining(
+            '${IntakeResultScreen.displayLimit} aksara pertama',
+          ),
+          findsOneWidget,
+        );
+      });
+
+      testWidgets('Simpan is disabled while a save is in flight (PD-040)',
+          (tester) async {
+        final repository = _GatedMemoryRepository();
+        await pumpApp(
+          tester,
+          FakeShareChannel(initial: shareOf(1, 'Hubungi 012-3456789')),
+          repository: repository,
+        );
+        final save = find.widgetWithText(
+          FilledButton,
+          IntakeResultScreen.saveLabel,
+        );
+
+        await tester.tap(save);
+        await tester.pump();
+
+        expect(tester.widget<FilledButton>(save).onPressed, isNull);
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+
+        // A second tap while the write is still running is not accepted.
+        await tester.tap(save, warnIfMissed: false);
+        await tester.pump();
+        expect(repository.saves, 1);
+
+        repository.gate.complete();
+        await tester.pumpAndSettle();
+
+        expect(tester.widget<FilledButton>(save).onPressed, isNotNull);
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+      });
+
       testWidgets('lifecycle and rotation after saving do not save again',
           (tester) async {
         final db = await pumpApp(
@@ -951,4 +1039,32 @@ void main() {
       });
     });
   });
+}
+
+/// A Memory repository whose save stays open until the test releases it.
+final class _GatedMemoryRepository implements MemoryRepository {
+  final Completer<void> gate = Completer<void>();
+  int saves = 0;
+
+  @override
+  Future<Result<String>> save({
+    required IncomingText incoming,
+    required UnderstandingResult understanding,
+  }) async {
+    saves += 1;
+    await gate.future;
+    return Result<String>.ok('id-$saves');
+  }
+
+  @override
+  Stream<List<MemoryRecord>> watch({String query = ''}) =>
+      Stream<List<MemoryRecord>>.value(const <MemoryRecord>[]);
+
+  @override
+  Future<Result<MemoryRecord>> findById(String id) async =>
+      const Result<MemoryRecord>.err(NotFoundFailure());
+
+  @override
+  Future<Result<void>> delete(String id) async =>
+      const Result<void>.err(NotFoundFailure());
 }

@@ -72,6 +72,28 @@ final class AuthRequiredFailure extends Failure {
   String get code => 'auth_required';
 }
 
+/// The content is longer than a saved Memory may be (PD-039).
+///
+/// Refused, never truncated. [limit] is in Unicode code points — the unit
+/// SQLite's `length()` and Postgres's `char_length()` count — so the app, the
+/// device database and the future cloud database agree on one number.
+final class ContentTooLongFailure extends Failure {
+  const ContentTooLongFailure(this.limit);
+
+  final int limit;
+
+  @override
+  String get code => 'content_too_long';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ContentTooLongFailure && limit == other.limit;
+
+  @override
+  int get hashCode => Object.hash(runtimeType, limit);
+}
+
 /// Anything not anticipated. Carries a stable [reason] code, never a message
 /// built from user content.
 final class UnexpectedFailure extends Failure {

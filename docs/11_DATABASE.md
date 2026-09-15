@@ -53,6 +53,8 @@ create table public.memories (
   created_at timestamptz not null default now(),     -- when the user saved it
   updated_at timestamptz not null default now(),     -- server-set, sync cursor
   deleted_at timestamptz,
+  -- PD-039: identical to the local limit. char_length counts code points,
+  -- as SQLite's length() does, so nothing saved on a device can fail here.
   constraint memories_content_len check (char_length(content) <= 10000)
 );
 
@@ -238,7 +240,8 @@ CREATE TABLE memories (
   CHECK (intake_source IN ('share', 'paste')),
   CHECK (length(id) = 36),
   CHECK (owner_user_id IS NOT NULL OR sync_status = 'local_only'),
-  CHECK (updated_at >= created_at)
+  CHECK (updated_at >= created_at),
+  CHECK (length(content) <= 10000)               -- PD-039, code points
 );
 CREATE INDEX memories_visible_created_idx ON memories (deleted_at, created_at);
 
@@ -268,6 +271,7 @@ default, and without it deleting a memory would orphan its searchable entities.
 | Decision | Why |
 |---|---|
 | `owner_user_id IS NOT NULL OR sync_status = 'local_only'` | The database itself, not app code, guarantees a guest row can never claim to be synced (PD-016). |
+| `length(content) <= 10000` | PD-039: one content contract locally and in the cloud. SQLite `length()` and Postgres `char_length()` both count code points, so the two constraints agree. The repository refuses first with a clear message; the CHECK guarantees no other path can store more. Never truncated. |
 | `intake_source` column | Records which explicit path the text came by (PD-033), for M5b and analytics later. |
 | `entities.type` has no CHECK | SQLite cannot alter a CHECK in place. M6 adds money and date without rebuilding the table; unknown types are skipped on read. |
 | No `user_id` on local entities | Ownership follows the memory. Postgres keeps it for RLS; locally it would be a second copy to keep consistent. |
@@ -276,6 +280,14 @@ default, and without it deleting a memory would orphan its searchable entities.
 | Database in `core/database/`, not `features/memory/` | Reminders (M7) and sync (M5b) share it. |
 | File in the app's private support directory | Excluded from backup and device transfer by the M1 manifest (ADR-021). |
 | `onUpgrade` throws | No migration exists yet. An unknown version jump is refused rather than guessed at, because guessing with a user's only copy of their data is what a migration must never do. |
+
+**Why schema version stays 1 after the PD-039 constraint.** The content
+`CHECK` was added in the M5a decision patch, before M5a merged and before any
+release. No user device has a version 1 database, so there is nothing to
+migrate. A development install created from the pre-patch M5a build lacks the
+database `CHECK` — the repository still enforces the limit — and should be
+reinstalled. Once any build ships, every schema change bumps the version with an
+explicit migration (§6).
 
 `reminders` arrives at M7. `security_scans` and `usage_events` have no local
 table — neither is needed offline.

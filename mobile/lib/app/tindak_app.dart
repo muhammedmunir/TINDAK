@@ -44,9 +44,7 @@ class _TindakAppState extends ConsumerState<TindakApp> {
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       initialRoute: Routes.home,
-      routes: <String, WidgetBuilder>{
-        Routes.home: (_) => const IntakeGate(),
-      },
+      routes: <String, WidgetBuilder>{Routes.home: (_) => const IntakeGate()},
       onGenerateRoute: (settings) {
         final id = settings.arguments;
         if (settings.name == Routes.memoryDetail && id is String) {
@@ -77,6 +75,10 @@ class IntakeGate extends ConsumerWidget {
   static const String savedMessage = 'Disimpan pada peranti ini.';
   static const String saveFailedMessage = 'Tidak dapat menyimpan. Cuba lagi.';
 
+  /// PD-039. Says what the limit is, so the user knows what to change.
+  static const String tooLongMessage =
+      'Teks terlalu panjang untuk disimpan. Had ialah 10,000 aksara.';
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     // A share or paste can arrive while a Memory detail is open. Bring the
@@ -100,6 +102,7 @@ class IntakeGate extends ConsumerWidget {
       onSave: understanding == null
           ? null
           : () => _save(context, ref, incoming, understanding),
+      isSaving: ref.watch(memorySavingProvider),
       onClose: () => ref.read(intakeControllerProvider.notifier).clear(),
     );
   }
@@ -127,6 +130,10 @@ class IntakeGate extends ConsumerWidget {
         messenger
           ..hideCurrentSnackBar()
           ..showSnackBar(const SnackBar(content: Text(savedMessage)));
+      case SaveOutcome.tooLong:
+        messenger
+          ..hideCurrentSnackBar()
+          ..showSnackBar(const SnackBar(content: Text(tooLongMessage)));
       case SaveOutcome.failed:
         messenger
           ..hideCurrentSnackBar()

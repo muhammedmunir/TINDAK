@@ -27,6 +27,7 @@ class IntakeResultScreen extends StatelessWidget {
     this.understanding,
     this.onAction,
     this.onSave,
+    this.isSaving = false,
     this.onClose,
     this.resolver = const ActionResolver(),
     super.key,
@@ -52,6 +53,10 @@ class IntakeResultScreen extends StatelessWidget {
 
   /// Called when the user presses Simpan. When null, Simpan is not shown.
   final VoidCallback? onSave;
+
+  /// True while a save is being written. Simpan is disabled and shows progress,
+  /// so a second tap is visibly not accepted (PD-040).
+  final bool isSaving;
 
   final VoidCallback? onClose;
   final ActionResolver resolver;
@@ -122,8 +127,13 @@ class IntakeResultScreen extends StatelessWidget {
               if (onSave != null) ...<Widget>[
                 const SizedBox(height: 28),
                 FilledButton.icon(
-                  onPressed: onSave,
-                  icon: const Icon(Icons.bookmark_add_outlined),
+                  onPressed: isSaving ? null : onSave,
+                  icon: isSaving
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                      : const Icon(Icons.bookmark_add_outlined),
                   label: const Text(saveLabel),
                 ),
               ],

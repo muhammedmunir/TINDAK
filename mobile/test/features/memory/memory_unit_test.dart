@@ -17,6 +17,7 @@ final class GatedRepository implements MemoryRepository {
   int saves = 0;
   Completer<void>? gate;
   bool fail = false;
+  bool tooLong = false;
 
   @override
   Future<Result<String>> save({
@@ -25,6 +26,9 @@ final class GatedRepository implements MemoryRepository {
   }) async {
     saves += 1;
     if (gate != null) await gate!.future;
+    if (tooLong) {
+      return const Result<String>.err(ContentTooLongFailure(10000));
+    }
     return fail
         ? const Result<String>.err(StorageFailure())
         : Result<String>.ok('id-$saves');
@@ -87,6 +91,44 @@ void main() {
       repo.gate!.complete();
       expect(await first, SaveOutcome.saved);
       expect(repo.saves, 1);
+    });
+
+    test('oversized content is reported as too long, not as a failure',
+        () async {
+      final repo = GatedRepository()..tooLong = true;
+
+      expect(
+        await MemorySaver(repo).save(
+          incoming: incoming,
+          understanding: understanding,
+        ),
+        SaveOutcome.tooLong,
+      );
+    });
+
+    test('reports in-flight state around a write (PD-040)', () async {
+      final states = <bool>[];
+      final repo = GatedRepository()..gate = Completer<void>();
+      final saver = MemorySaver(repo, onInFlightChanged: states.add);
+
+      final pending = saver.save(
+        incoming: incoming,
+        understanding: understanding,
+      );
+      expect(states, <bool>[true]);
+
+      repo.gate!.complete();
+      await pending;
+      expect(states, <bool>[true, false]);
+    });
+
+    test('in-flight state is cleared even when the write throws', () async {
+      final states = <bool>[];
+      final saver = MemorySaver(_ThrowingRepository(), onInFlightChanged: states.add);
+
+      await saver.save(incoming: incoming, understanding: understanding);
+
+      expect(states, <bool>[true, false]);
     });
 
     test('a failure is reported and does not leave the saver stuck', () async {
@@ -168,4 +210,12 @@ void main() {
       );
     });
   });
+}
+
+final class _ThrowingRepository extends GatedRepository {
+  @override
+  Future<Result<String>> save({
+    required IncomingText incoming,
+    required UnderstandingResult understanding,
+  }) async => throw StateError('boom');
 }
