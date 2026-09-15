@@ -2,7 +2,7 @@
 
 **Owner:** Shared governance
 **Status:** ARCHITECTURE LOCKED — 2026-09-10
-ADR-001…ADR-031 Accepted · ADR-032 Proposed · PD-001…PD-045 Accepted
+ADR-001…ADR-032 Accepted · PD-001…PD-045 Accepted
 
 Three registers, all binding:
 
@@ -594,7 +594,28 @@ while building sync. None changes product behaviour.
 
 **Detail:** `supabase/migrations/20260915000003_push_memory.sql`,
 `mobile/lib/features/sync/`.
-**Status:** Proposed — for Product Direction review at the M5b gate.
+**Conditions (Product Direction):** `push_memory()` stays authenticated,
+ownership-bound, transactional and unable to bypass RLS or immutability — it is
+`SECURITY INVOKER` with a locked search path, asserted by S-1 in
+`rls_memories.sql`. A tombstone carries no deleted content. The 80-day
+reconciliation respects pending local changes and deletions and never touches
+guest memories.
+**Status:** Accepted — Product Direction M5b review (conditional pass).
+
+### M5b known gaps accepted by Product Direction
+- **Scheduled 90-day tombstone purge** — not an M5b blocker; must exist before
+  closed beta.
+- **Permanently rejected queued change** — accepted for alpha. Sync never
+  retries in a loop (it runs only on its triggers); the change stays queued,
+  Settings shows the failure, and the failure code is logged without content.
+  Never silently deleted to allow sign-out.
+- **Expired session** — account rows stay on the device but are unreadable
+  through list, search and detail until the same account signs in again
+  (PD-017). Guest memories stay usable.
+
+### M5b copy baseline (Product Direction)
+Sign-in, OTP, Settings, save and status copy as listed in the M5b review, and
+the OTP email in `mobile/README.md`. Supabase errors are never shown to users.
 
 ---
 

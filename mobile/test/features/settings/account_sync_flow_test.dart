@@ -275,7 +275,7 @@ void main() {
     });
 
     for (final (outcome, message) in <(AuthOutcome, String)>[
-      (AuthOutcome.offline, SignInScreen.offlineMessage),
+      (AuthOutcome.offline, SignInScreen.failedMessage),
       (AuthOutcome.rateLimited, SignInScreen.rateLimitedMessage),
       (AuthOutcome.failed, SignInScreen.failedMessage),
     ]) {
@@ -328,6 +328,38 @@ void main() {
 
       expect(find.text('mine'), findsOneWidget);
       expect(find.text(HomeScreen.deviceOnlyNotice), findsNothing);
+    });
+
+    testWidgets('a session that ends on its own hides account items from list '
+        'and search, keeps guest items usable, and the same account gets '
+        'them back (PD-017)', (tester) async {
+      await seed('guest nota');
+      await seed('rahsia akaun 012-3456789', owner: alice.id);
+      final gateway = await pump(tester, account: alice);
+      expect(find.text('rahsia akaun 012-3456789'), findsOneWidget);
+
+      // Expired or revoked session: no sign-out flow, no purge.
+      gateway.signInAs(null);
+      await tester.pumpAndSettle();
+
+      expect(find.text('rahsia akaun 012-3456789'), findsNothing);
+      expect(find.text('guest nota'), findsOneWidget);
+      await tester.enterText(find.byType(TextField), '3456789');
+      await tester.pumpAndSettle();
+      expect(find.text('rahsia akaun 012-3456789'), findsNothing);
+      await tester.enterText(find.byType(TextField), '');
+      await tester.pumpAndSettle();
+      // Kept on the device, not deleted: unsent changes are never lost.
+      expect(await rows(), hasLength(2));
+
+      // Another account does not see it either.
+      gateway.signInAs(const Account(id: 'user-bob', email: 'b@example.com'));
+      await tester.pumpAndSettle();
+      expect(find.text('rahsia akaun 012-3456789'), findsNothing);
+
+      gateway.signInAs(alice);
+      await tester.pumpAndSettle();
+      expect(find.text('rahsia akaun 012-3456789'), findsOneWidget);
     });
 
     testWidgets('signing out hides account items at once', (tester) async {

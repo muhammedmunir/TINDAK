@@ -366,6 +366,54 @@ heading. A run that was not recorded did not happen.
 **M5b does not pass its gate until every row of that matrix is recorded as
 failing to gain access.**
 
+### 9.1 M5b evidence record
+
+Environment: the single Supabase project (CEO decision). Run order
+`20260915000001` → `…0002` → `…0003` → `supabase/tests/rls_memories.sql`.
+
+#### Automated (2026-09-15) — PASS
+
+- `flutter analyze`: no issues. `flutter test`: **499/499**.
+- Covers: account-aware save/visibility/delete, push/pull/tombstone rules,
+  offline queue and lost-reply retry, delete racing an in-flight push, paging and
+  cursor overlap, 80-day reconciliation keeping pending changes, coalesced runs,
+  no content in sync logs, migration prompt decline/accept/resume, fail-safe
+  sign-out, expired session hiding account items (PD-017), sign-in errors.
+- Real-file schema upgrade v1 → v2 (`migration_test.dart`).
+
+#### Emulator, no account (2026-09-15) — PASS
+
+| Check | Result |
+|---|---|
+| Install over M5a with `adb install -r`, data kept | M5a memory present after v1 → v2 upgrade |
+| APK permissions | `INTERNET` only new permission |
+| Home and Tetapan render with cloud config | yes |
+| Tetapan opened and closed 17×, including 4 home/resume cycles and recents | opened every time, same process throughout, no crash or error in logcat |
+| Earlier single unexplained close | not reproduced; no TINDAK entry in the crash buffer |
+
+#### Supabase migrations and RLS matrix — PENDING (CEO runs)
+
+Paste the result grid here under a dated heading. Every row must be PASS:
+P-1…P-8, B-1, B-2, B-2b, B-2c, B-3…B-7, B-5b, B-12, B-13, B-13b, B-14, B-15,
+I-1…I-7, S-1, Z-1.
+
+#### Live end-to-end — PENDING (CEO with Claude)
+
+| # | Scenario | Expected | Result |
+|---|---|---|---|
+| 1 | Existing guest item after upgrade | present, "Pada peranti ini" | |
+| 2 | Real OTP sign-in | code email arrives with approved copy; signed in | |
+| 3 | Migration prompt → Bukan Sekarang | guest rows unchanged, nothing in cloud | |
+| 4 | Tetapan → Sync ke Akaun → Sync | rows account-owned, synced, present in cloud | |
+| 5 | Signed-in save | "Disimpan. Akan disync ke akaun anda."; synced | |
+| 6 | Offline save, then online and resume | pending while offline, synced after | |
+| 7 | Delete synced account item | cloud tombstone, local row gone | |
+| 8 | Pull to refresh after 7 | item does not come back | |
+| 9 | Log Keluar while offline with a pending change | blocked with PD-041 dialog, nothing deleted | |
+| 10 | Log Keluar with empty queue | account items leave the UI, guest items stay usable | |
+| 11 | Sign in again with the same account | synced items return | |
+| 12 | Tetapan open/close again on the live build | no close | |
+
 ---
 
 ## 10. Integration

@@ -64,17 +64,19 @@ unavailable in that build.
 
 Sign-in is a six-digit code typed in the app (ADR-020). Supabase's default
 "Magic Link" email sends a link, not a code. In the Dashboard → Authentication →
-Email Templates → **Magic Link**, the body must include `{{ .Token }}`, for
-example:
+Email Templates, set **Magic Link** (and **Confirm signup**, used for a first
+sign-in) to the copy approved by Product Direction:
+
+Subject: `Kod log masuk TINDAK`
 
 ```html
 <h2>Kod log masuk TINDAK</h2>
-<p>Kod anda: <strong>{{ .Token }}</strong></p>
-<p>Kod ini tamat tempoh tidak lama lagi. Jangan kongsi kod ini dengan sesiapa.</p>
+<p>Kod log masuk anda ialah <strong>{{ .Token }}</strong>.</p>
+<p>Masukkan kod ini dalam TINDAK untuk meneruskan.</p>
+<p>Jika anda tidak meminta kod ini, abaikan e-mel ini.</p>
 ```
 
-The template wording is user-facing copy and goes to Product Direction for
-review.
+No `{{ .ConfirmationURL }}` and no marketing. The code is the only way in.
 
 ## Structure
 

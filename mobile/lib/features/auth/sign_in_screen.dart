@@ -13,26 +13,31 @@ import 'package:tindak/features/auth/data/auth_gateway.dart';
 class SignInScreen extends ConsumerStatefulWidget {
   const SignInScreen({super.key});
 
-  static const String title = 'Log Masuk';
+  // Product Direction copy baseline, M5b review.
+  static const String title = 'Log masuk ke TINDAK';
+  static const String emailLabel = 'E-mel';
+  static const String sendCode = 'Hantar kod';
+  static const String codeTitle = 'Masukkan kod 6 digit';
+  static const String codeHelper = 'Masukkan kod yang dihantar ke e-mel anda.';
+  static const String invalidCodeMessage =
+      'Kod tidak sah atau telah tamat tempoh. Cuba lagi.';
+
+  /// Offline, timeout and any other auth failure: one message, never a
+  /// Supabase error.
+  static const String failedMessage =
+      'Tidak dapat log masuk. Semak sambungan internet dan cuba lagi.';
+
+  // Not in the baseline; written to match it. Flagged for Product Direction.
   static const String emailIntro =
-      'Masukkan emel anda. Kami akan menghantar kod 6 digit.';
-  static const String emailLabel = 'Emel';
-  static const String sendCode = 'Hantar Kod';
-  static String codeIntro(String email) =>
-      'Masukkan kod 6 digit yang dihantar ke $email.';
+      'Masukkan e-mel anda. Kami akan menghantar kod 6 digit.';
   static const String codeLabel = 'Kod';
   static const String verify = 'Sahkan';
-  static const String resend = 'Hantar Semula Kod';
-  static const String changeEmail = 'Tukar Emel';
+  static const String resend = 'Hantar semula kod';
+  static const String changeEmail = 'Tukar e-mel';
   static const String codeResent = 'Kod baharu telah dihantar.';
-
-  static const String invalidEmailMessage = 'Emel tidak sah.';
-  static const String invalidCodeMessage =
-      'Kod tidak sah atau telah tamat tempoh. Minta kod baharu.';
+  static const String invalidEmailMessage = 'E-mel tidak sah.';
   static const String rateLimitedMessage =
       'Terlalu banyak cubaan. Tunggu sebentar dan cuba lagi.';
-  static const String offlineMessage = 'Tiada sambungan internet. Cuba lagi.';
-  static const String failedMessage = 'Tidak dapat log masuk. Cuba lagi.';
 
   static final RegExp _emailPattern = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
   static final RegExp _codePattern = RegExp(r'^\d{6}$');
@@ -112,8 +117,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
     AuthOutcome.invalidEmail => SignInScreen.invalidEmailMessage,
     AuthOutcome.invalidCode => SignInScreen.invalidCodeMessage,
     AuthOutcome.rateLimited => SignInScreen.rateLimitedMessage,
-    AuthOutcome.offline => SignInScreen.offlineMessage,
-    AuthOutcome.failed || AuthOutcome.success => SignInScreen.failedMessage,
+    AuthOutcome.offline ||
+    AuthOutcome.failed ||
+    AuthOutcome.success => SignInScreen.failedMessage,
   };
 
   @override
@@ -145,10 +151,9 @@ class _SignInScreenState extends ConsumerState<SignInScreen> {
                 ),
               ),
             ] else ...<Widget>[
-              Text(
-                SignInScreen.codeIntro(_email.text.trim()),
-                style: theme.textTheme.bodyLarge,
-              ),
+              Text(SignInScreen.codeTitle, style: theme.textTheme.titleMedium),
+              const SizedBox(height: 8),
+              Text(SignInScreen.codeHelper, style: theme.textTheme.bodyLarge),
               const SizedBox(height: 20),
               TextField(
                 key: const ValueKey<String>('sign-in-code'),

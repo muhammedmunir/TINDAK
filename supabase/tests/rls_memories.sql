@@ -537,6 +537,19 @@ begin
             'public.push_memory(uuid, text, text, text, timestamptz, jsonb)',
             'execute') then 'PASS' else 'FAIL' end);
 
+  -- S-1 push_memory cannot bypass RLS: SECURITY INVOKER, search_path locked
+  insert into rls_results (id, check_, expected, observed, result)
+  select 'S-1', 'push_memory is invoker-rights, search_path locked',
+         'invoker, search_path=""',
+         case when p.prosecdef then 'DEFINER' else 'invoker' end || ', '
+           || coalesce(array_to_string(p.proconfig, ';'), 'no config'),
+         case when not p.prosecdef
+               and p.proconfig @> array['search_path=""']
+              then 'PASS' else 'FAIL' end
+  from pg_proc p
+  join pg_namespace ns on ns.oid = p.pronamespace
+  where ns.nspname = 'public' and p.proname = 'push_memory';
+
   -- -------------------------------------------------------------------------
   -- Cleanup: removes both test users and, by cascade, every row they made
   -- -------------------------------------------------------------------------
