@@ -493,8 +493,11 @@ Real OTP delivery and verification: pending, scenario 2 below.
 
 | # | Scenario | Expected | Result |
 |---|---|---|---|
-| 1 | Existing guest item after upgrade | present, "Pada peranti ini" | |
+| 1 | Existing guest item after upgrade | present, "Pada peranti ini" | **PASS** (2026-09-15) — M5a item intact after v1 → v2, status "Pada peranti ini", Panggil and WhatsApp still offered |
 | 2 | Real OTP sign-in | code email arrives with approved copy; signed in | |
+
+Cloud baseline before scenario 2, taken 2026-09-16 03:22 UTC: 0 users,
+0 memories, 0 entities. Scenario 3 is judged against this.
 | 3 | Migration prompt → Bukan Sekarang | guest rows unchanged, nothing in cloud | |
 | 4 | Tetapan → Sync ke Akaun → Sync | rows account-owned, synced, present in cloud | |
 | 5 | Signed-in save | "Disimpan. Akan disync ke akaun anda."; synced | |
