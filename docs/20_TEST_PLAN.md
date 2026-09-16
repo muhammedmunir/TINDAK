@@ -494,20 +494,22 @@ Real OTP delivery and verification: pending, scenario 2 below.
 | # | Scenario | Expected | Result |
 |---|---|---|---|
 | 1 | Existing guest item after upgrade | present, "Pada peranti ini" | **PASS** (2026-09-15) — M5a item intact after v1 → v2, status "Pada peranti ini", Panggil and WhatsApp still offered |
-| 2 | Real OTP sign-in | code email arrives with approved copy; signed in | |
-
-Cloud baseline before scenario 2, taken 2026-09-16 03:22 UTC: 0 users,
-0 memories, 0 entities. Scenario 3 is judged against this.
-| 3 | Migration prompt → Bukan Sekarang | guest rows unchanged, nothing in cloud | |
-| 4 | Tetapan → Sync ke Akaun → Sync | rows account-owned, synced, present in cloud | |
-| 5 | Signed-in save | "Disimpan. Akan disync ke akaun anda."; synced | |
-| 6 | Offline save, then online and resume | pending while offline, synced after | |
-| 7 | Delete synced account item | cloud tombstone, local row gone | |
-| 8 | Pull to refresh after 7 | item does not come back | |
-| 9 | Log Keluar while offline with a pending change | blocked with PD-041 dialog, nothing deleted | |
-| 10 | Log Keluar with empty queue | account items leave the UI, guest items stay usable | |
+| 2 | Real OTP sign-in | code email arrives with approved copy; signed in | **PASS** — email from `auth@tindak.muhammedmunir.my` in ~10 s, inbox not spam; six digits accepted; cloud then **1 user, 0 memories, 0 entities** |
+| 3 | Migration prompt → Bukan Sekarang | guest rows unchanged, nothing in cloud | **PASS** — cloud still 0 memories; Settings offers "1 item pada peranti ini belum disync ke akaun" |
+| 4 | Tetapan → Sync ke Akaun → Sync | rows account-owned, synced, present in cloud | **PASS** — same id `5501dd7a…`, `created_at` 2026-09-14 kept, server-set `updated_at`, 1 entity `phone:+60198765432`; detail reads "Disimpan dalam akaun" |
+| 5 | Signed-in save | "Disimpan. Akan disync ke akaun anda."; synced | **PASS** — shared text saved and in the cloud with 2 entities, no manual sync |
+| 6 | Offline save, then online and resume | pending while offline, synced after | **PASS** — airplane mode: save succeeded and listed; Settings read "Tiada sambungan. Perubahan akan disync kemudian."; after reconnect and resume: "Semua perubahan telah disync." and the row reached the cloud |
+| 7 | Delete synced account item | cloud tombstone, local row gone | **PASS** — cloud `deleted_at` set, item gone from the device |
+| 8 | Pull to refresh after 7 | item does not come back | **PASS** — two refreshes, no resurrection |
+| 9 | Log Keluar while offline with a pending change | blocked with PD-041 dialog, nothing deleted | **PASS** — exact PD-041 title and body, [Batal] [Cuba Lagi]; Batal left the user signed in with every row intact |
+| 10 | Log Keluar with empty queue | account items leave the UI, guest items stay usable | **PASS** — Home back to the empty state, cloud untouched (2 live, 1 tombstone); a later guest save shows device-only with the PD-019 notice |
 | 11 | Sign in again with the same account | synced items return | |
 | 12 | Tetapan open/close again on the live build | no close | |
+
+Cloud baseline before scenario 2, taken 2026-09-16 03:22 UTC: 0 users,
+0 memories, 0 entities — scenario 3 is judged against it. All device steps ran
+on the emulator against the live project; the CEO read each code from their own
+inbox and no code was shared.
 
 ---
 
