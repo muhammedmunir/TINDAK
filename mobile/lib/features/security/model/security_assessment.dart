@@ -14,11 +14,22 @@ enum RiskLevel {
   caution,
   suspicious,
 
-  /// Reserved for an authoritative provider match in M8b. **The local
-  /// analyser can never produce this**, and a test enforces that: no
-  /// combination of on-device heuristics is strong enough to call a link
-  /// dangerous.
+  /// An authoritative provider match. **The local analyser can never produce
+  /// this**, and a test enforces that: no combination of on-device heuristics
+  /// is strong enough to call a link dangerous.
   high,
+}
+
+/// Codes for what the online layer contributed, kept separate from the local
+/// [SecurityFindingCode] so the two can never be confused in copy or in logs.
+enum OnlineFindingCode {
+  /// The provider reports this URL as a threat.
+  providerThreat,
+
+  /// The provider named a category TINDAK has specific copy for.
+  providerThreatMalware,
+  providerThreatSocialEngineering,
+  providerThreatUnwantedSoftware,
 }
 
 /// Whether the online reputation check happened — and **nothing more**.
@@ -40,9 +51,19 @@ enum OnlineCheckStatus {
   /// Ran, and the provider reports a threat.
   threatFound,
 
-  /// Attempted and could not complete: offline, timeout, provider error, or
-  /// the daily limit reached.
+  /// Attempted and could not complete: timeout, provider error, or a response
+  /// TINDAK could not read.
   unavailable,
+
+  /// The device has no connection, so nothing was sent.
+  offline,
+
+  /// This account has used its checks for today, so nothing was sent.
+  quotaReached,
+
+  /// The user has not yet agreed to send links to the online service (C-6).
+  /// Nothing has ever been sent.
+  disclosureRequired,
 }
 
 /// One deterministic signal found in a URL.
@@ -115,6 +136,7 @@ final class SecurityAssessment {
     required this.level,
     required this.findings,
     required this.onlineStatus,
+    this.onlineFinding,
   });
 
   /// The normalised URL that was examined — the same value M4 would open.
@@ -126,6 +148,9 @@ final class SecurityAssessment {
   final List<SecurityFinding> findings;
 
   final OnlineCheckStatus onlineStatus;
+
+  /// Present only when the provider reported a threat.
+  final OnlineFindingCode? onlineFinding;
 
   /// True when the user should be asked again before opening (PD-014: they may
   /// still open it).

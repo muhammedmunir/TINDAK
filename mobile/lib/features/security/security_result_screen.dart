@@ -14,27 +14,65 @@ import 'package:tindak/features/understanding/model/detected_entity.dart';
 /// the reasons, and the person decides. Nothing here blocks a link — a link
 /// with signs of risk asks once more, and then opens through the same M4 path
 /// as any other (PD-014).
-class SecurityResultScreen extends ConsumerWidget {
+class SecurityResultScreen extends ConsumerStatefulWidget {
   const SecurityResultScreen({
     required this.entity,
     required this.assessment,
+    this.pending,
     super.key,
   });
 
   final DetectedEntity entity;
+
+  /// What the local checks found. Shown immediately.
   final SecurityAssessment assessment;
+
+  /// The full check, when an online one is running. The screen shows the
+  /// local result while it waits (M8b).
+  final Future<SecurityAssessment>? pending;
 
   static Route<void> route({
     required DetectedEntity entity,
     required SecurityAssessment assessment,
+    Future<SecurityAssessment>? pending,
   }) => MaterialPageRoute<void>(
     settings: const RouteSettings(name: Routes.securityResult),
-    builder: (_) =>
-        SecurityResultScreen(entity: entity, assessment: assessment),
+    builder: (_) => SecurityResultScreen(
+      entity: entity,
+      assessment: assessment,
+      pending: pending,
+    ),
   );
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<SecurityResultScreen> createState() =>
+      _SecurityResultScreenState();
+}
+
+class _SecurityResultScreenState extends ConsumerState<SecurityResultScreen> {
+  late SecurityAssessment assessment = widget.assessment;
+  bool _waiting = false;
+
+  DetectedEntity get entity => widget.entity;
+
+  @override
+  void initState() {
+    super.initState();
+    final pending = widget.pending;
+    if (pending == null) return;
+
+    _waiting = true;
+    pending.then((result) {
+      if (!mounted) return;
+      setState(() {
+        assessment = result;
+        _waiting = false;
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final colour = switch (assessment.level) {
@@ -82,8 +120,14 @@ class SecurityResultScreen extends ConsumerWidget {
             else
               for (final finding in assessment.findings)
                 _Line(SecurityCopy.reason(finding.code)),
+            if (assessment.onlineFinding case final OnlineFindingCode code)
+              _Line(SecurityCopy.onlineReason(code)),
             // Availability, stated separately from the risk level (C-1).
-            _Line(SecurityCopy.onlineStatus(assessment.onlineStatus)),
+            _Line(
+              _waiting
+                  ? SecurityCopy.checking
+                  : SecurityCopy.onlineStatus(assessment.onlineStatus),
+            ),
             if (assessment.onlineStatus ==
                 OnlineCheckStatus.signInRequired) ...<Widget>[
               const SizedBox(height: 8),

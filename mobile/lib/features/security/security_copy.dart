@@ -32,6 +32,17 @@ final class SecurityCopy {
   static const String noLocalFindings =
       'Tiada tanda risiko ditemui dalam semakan tempatan.';
 
+  static const String checking = 'Menyemak…';
+
+  // The one-time disclosure, shown before the first URL ever leaves the
+  // device (C-6). Separate from the AI consent M9 will need.
+  static const String disclosureTitle = 'Semakan keselamatan dalam talian';
+  static const String disclosureBody =
+      'Untuk menyemak reputasi pautan, TINDAK akan menghantar pautan yang '
+      'anda pilih kepada perkhidmatan keselamatan Google. Kandungan mesej '
+      'lain tidak dihantar.';
+  static const String disclosureContinue = 'Teruskan';
+
   static String levelLabel(RiskLevel level) => switch (level) {
     RiskLevel.low => 'RISIKO RENDAH',
     RiskLevel.caution => 'BERHATI-HATI',
@@ -50,6 +61,29 @@ final class SecurityCopy {
     OnlineCheckStatus.threatFound =>
       'Perkhidmatan reputasi menandakan pautan ini sebagai ancaman.',
     OnlineCheckStatus.unavailable => 'Semakan dalam talian tidak tersedia.',
+    OnlineCheckStatus.offline =>
+      'Tiada sambungan internet. Semakan tempatan masih tersedia.',
+    OnlineCheckStatus.quotaReached =>
+      'Had semakan dalam talian hari ini telah dicapai. Cuba lagi esok.',
+    OnlineCheckStatus.disclosureRequired =>
+      'Semakan dalam talian belum dilakukan.',
+  };
+
+  /// What the provider contributed, when it reported a threat. Factual, and
+  /// never raw provider jargon.
+  static String onlineReason(OnlineFindingCode code) => switch (code) {
+    OnlineFindingCode.providerThreat =>
+      'Perkhidmatan reputasi dalam talian menandakan pautan ini sebagai '
+          'ancaman.',
+    OnlineFindingCode.providerThreatMalware =>
+      'Perkhidmatan reputasi dalam talian menandakan pautan ini sebagai '
+          'perisian berbahaya.',
+    OnlineFindingCode.providerThreatSocialEngineering =>
+      'Perkhidmatan reputasi dalam talian menandakan pautan ini sebagai '
+          'cubaan menipu pengguna.',
+    OnlineFindingCode.providerThreatUnwantedSoftware =>
+      'Perkhidmatan reputasi dalam talian menandakan pautan ini sebagai '
+          'perisian yang tidak diingini.',
   };
 
   /// One factual sentence per signal. Each says what was found, not what it

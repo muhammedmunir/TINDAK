@@ -19,6 +19,16 @@ import '../../support/fake_cloud.dart';
 
 /// The result screen and the check action (M8a): what a person sees, and that
 /// opening still goes through the M4 path.
+SecurityAssessment _withStatus(
+  SecurityAssessment local,
+  OnlineCheckStatus status,
+) => SecurityAssessment(
+  url: local.url,
+  level: local.level,
+  findings: local.findings,
+  onlineStatus: status,
+);
+
 void main() {
   DetectedEntity urlEntity(String url) => DetectedEntity(
     type: EntityType.url,
@@ -51,12 +61,15 @@ void main() {
           home: Consumer(
             builder: (context, ref, _) {
               final entity = urlEntity(url);
-              final assessment = ref
-                  .read(securityCheckerProvider)
-                  .check(entity);
+              final checker = ref.read(securityCheckerProvider);
               return SecurityResultScreen(
                 entity: entity,
-                assessment: assessment,
+                assessment: _withStatus(
+                  checker.local(entity),
+                  signedIn
+                      ? OnlineCheckStatus.notChecked
+                      : OnlineCheckStatus.signInRequired,
+                ),
               );
             },
           ),

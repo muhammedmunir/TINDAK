@@ -6,6 +6,8 @@ import 'package:tindak/core/logging/app_logger.dart';
 import 'package:tindak/features/auth/auth_providers.dart';
 import 'package:tindak/features/auth/data/secure_session_storage.dart';
 import 'package:tindak/features/auth/data/supabase_auth_gateway.dart';
+import 'package:tindak/features/security/data/edge_reputation_provider.dart';
+import 'package:tindak/features/security/security_providers.dart';
 import 'package:tindak/features/sync/data/supabase_cloud_memory_api.dart';
 import 'package:tindak/features/sync/sync_providers.dart';
 
@@ -50,6 +52,11 @@ final class CloudBootstrap {
         ),
         cloudMemoryApiProvider.overrideWithValue(
           SupabaseCloudMemoryApi(client),
+        ),
+        // Protect's online half reaches TINDAK's own Edge Function, which is
+        // the only holder of the Web Risk key (M8b).
+        reputationProviderProvider.overrideWithValue(
+          EdgeReputationProvider(client),
         ),
       ];
     } on Object catch (error) {
