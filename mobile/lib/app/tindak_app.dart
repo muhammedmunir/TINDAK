@@ -8,6 +8,7 @@ import 'package:tindak/app/routes.dart';
 import 'package:tindak/app/theme.dart';
 import 'package:tindak/features/actions/model/action_descriptor.dart';
 import 'package:tindak/features/actions/widgets/entity_row.dart' as actions;
+import 'package:tindak/features/ai/ai_action.dart';
 import 'package:tindak/features/auth/auth_providers.dart';
 import 'package:tindak/features/auth/sign_in_screen.dart';
 import 'package:tindak/features/home/home_screen.dart';
@@ -199,6 +200,15 @@ class IntakeGate extends ConsumerWidget {
             )
               : actions.runActionWithFeedback(context, ref, action),
       },
+      // Offered only when the local engine found nothing, and only as a press.
+      onTryAi: understanding == null || !understanding.isEmpty
+          ? null
+          : () => runAiUnderstanding(
+              context,
+              ref,
+              incoming: incoming,
+              understanding: understanding,
+            ),
       onSave: understanding == null
           ? null
           : () => _save(context, ref, incoming, understanding),

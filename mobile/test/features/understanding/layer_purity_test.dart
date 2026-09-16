@@ -170,6 +170,59 @@ void main() {
     expect(code.contains('RiskLevel.high'), isFalse);
   });
 
+  test('the AI domain, validation and service layers are pure (M9a)', () {
+    // The entire safety argument for AI lives in these three directories:
+    // grounding a claim in the user's own text, agreeing with what TINDAK
+    // derives for itself, and the per-type rules. Keeping them pure Dart is
+    // what makes that argument a unit test rather than an integration one.
+    for (final directory in <String>[
+      'lib/features/ai/model',
+      'lib/features/ai/validation',
+      'lib/features/ai/service',
+    ]) {
+      expect(violations(directory, impure), isEmpty, reason: directory);
+    }
+  });
+
+  test('no build can pretend AI is available (M9a)', () {
+    // PD-048 leaves the provider unconfigured, and M9a ships no implementation
+    // of the interface at all — not behind a flag, not behind a debug switch.
+    // The fake lives under test/, where a release build cannot reach it.
+    final implementations = <String>[];
+    final implementsIt = RegExp(r'implements\s+AiUnderstandingProvider');
+    for (final entity in Directory('lib').listSync(recursive: true)) {
+      if (entity is! File || !entity.path.endsWith('.dart')) continue;
+      final source = entity.readAsStringSync();
+      if (implementsIt.hasMatch(source) || source.contains('FakeAiProvider')) {
+        implementations.add(entity.path.replaceAll(r'\', '/'));
+      }
+    }
+
+    expect(implementations, isEmpty);
+  });
+
+  test('the AI feature cannot act on its own (M9a)', () {
+    // A model returns claims. Everything that reaches the outside world — a
+    // dial, a link, the clipboard, a scheduled alarm — is reached by the user
+    // pressing a button, through the code that already existed. AI may call
+    // the shared action and reminder *entry points*, and may not reach past
+    // them into the repositories or the scheduler.
+    final forbidden = <RegExp>[
+      RegExp(r'''import\s+['"]package:url_launcher/'''),
+      RegExp(r'''import\s+['"]package:supabase'''),
+      RegExp(r'''import\s+['"]package:http/'''),
+      RegExp(r'''import\s+['"]dart:io'''),
+      RegExp(r'\bClipboard\.'),
+      RegExp(r'''import\s+['"]package:tindak/features/reminders/data/'''),
+      RegExp(
+        r'''import\s+['"]package:tindak/features/reminders/reminder_service''',
+      ),
+      RegExp(r'''import\s+['"]package:tindak/features/memory/data/'''),
+    ];
+
+    expect(violations('lib/features/ai', forbidden), isEmpty);
+  });
+
   test('the clipboard is touched in exactly two files', () {
     // ADR-004 and PD-033: one file reads the clipboard, and only on the Tampal
     // press; one file writes it, and only on the Salin press. A third file

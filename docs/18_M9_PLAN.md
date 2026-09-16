@@ -1,7 +1,15 @@
 # 18 — M9 PLAN: AI Fallback
 
 **Owner:** Technical Lead (Claude)
-**Status:** PROPOSED — awaiting Product Direction review. No feature code written.
+**Status:** APPROVED WITH DECISIONS at the M9 plan gate, 2026-09-16 — see
+`90_DECISIONS.md`, PD-048 and ADR-033, which answer Q-1…Q-7 in §25 and add the
+value/span consistency rule. **M9a is built**; evidence in `20_TEST_PLAN.md`
+§9.5. M9b (a real provider) is not authorised and is subject to PD-048.
+
+Where this document and the gate decisions differ, the decisions win: the
+secondary CTA proposed in §2 was dropped (Q-2), consent is **not** cleared on
+sign-out (Q-3), and agreement between the model's value and TINDAK's own
+derivation is required, not merely recommended.
 **Baseline:** `develop @ d3dd17b`
 **Inputs:** M9 Product Direction Brief (2026-09-16), ADR-005, ADR-006, ADR-011,
 ADR-025, ADR-028, PD-002, PD-007, PD-010, PD-011, PD-022, PD-023, PD-024,

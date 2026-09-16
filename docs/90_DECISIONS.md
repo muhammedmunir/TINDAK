@@ -2,14 +2,14 @@
 
 **Owner:** Shared governance
 **Status:** ARCHITECTURE LOCKED — 2026-09-10
-ADR-001…ADR-032 Accepted · PD-001…PD-047 Accepted
+ADR-001…ADR-033 Accepted · PD-001…PD-048 Accepted
 
 Three registers, all binding:
 
 - **ADR-001…ADR-012** — founding decisions from the master plan.
-- **PD-001…PD-047** — product decisions. PD-001…PD-022 locked with Product Pack
+- **PD-001…PD-048** — product decisions. PD-001…PD-022 locked with Product Pack
   V1; PD-023…PD-029 from the Product Direction review of the Technical Pack;
-  PD-030…PD-031 at Architecture Lock; PD-032…PD-047 from milestone reviews.
+  PD-030…PD-031 at Architecture Lock; PD-032…PD-048 from milestone reviews.
 - **ADR-013…ADR-028** — architecture decisions from the Technical Pack.
   Product Direction passed them and the CEO locked them on 2026-09-10. They are
   binding for V1 unless superseded by a later CEO-approved decision.
@@ -715,6 +715,85 @@ current pricing. It is not a guarantee that a billing-enabled account is never
 charged. No financial risk is taken to close a gate.
 
 **Status:** Accepted — CEO, M8b, 2026-09-16.
+
+### PD-048 — AI provider privacy gate
+**TINDAK does not send user-selected content to an AI provider that uses that
+content for product or model improvement, or for human review in service of
+those.**
+
+Checked against official documentation at the M9 plan gate, not assumption.
+Google's Gemini API has a real free tier that needs no billing account — unlike
+Web Risk, which PD-047 ran aground on — but its terms say of the unpaid tier
+that *"human reviewers may read, annotate, and process your API input and
+output"*, and of the paid tier that Google *"doesn't use your prompts … or
+responses to improve our products"*. TINDAK's input is somebody's WhatsApp
+message: a bill, an appointment, a phone number, an amount. Free is the wrong
+price for that.
+
+This is **not** a permanent rejection of Gemini, and not a decision to adopt
+any other provider. Paid Gemini qualifies on terms; so does the Anthropic API
+by default; neither is chosen, and M9 stays provider-agnostic. Nothing is
+adopted to have a provider.
+
+**What ships meanwhile.** M9a is built in full with no provider at all. The
+gate answers `notConfigured`, the app says *AI tidak tersedia buat masa ini*,
+and every local feature is untouched. Enabling a provider later is a key, an
+Edge Function and a decision — not a redesign.
+
+**Status:** Accepted — CEO, M9 plan gate, 2026-09-16.
+
+### M9 plan gate decisions (2026-09-16)
+
+| # | Question | Decision |
+|---|---|---|
+| Q-1 | Provider privacy | PD-048 above. M9a proceeds with no real provider |
+| Q-2 | When the CTA appears | **Unknown state only.** A result that already carries an actionable entity does not advertise a slower, paid path to the same place. The secondary link proposed in the plan is dropped |
+| Q-3 | Consent | One-time, **versioned**, local per installation. Not synced. **Not** cleared on sign-out. Cleared by clearing app data or uninstalling. A materially changed promise raises the required version and asks again |
+| Q-4 | Bare-domain AI URLs | **Rejected.** PD-027 is not reopened through AI |
+| Q-5 | AI time of day | **Dates only in M9a.** An AI-derived time is not used; M7's sheet still asks the user to pick one, so PD-007 is untouched. Revisit when the domain has first-class date-time support |
+| Q-6 | Grounding | **Mandatory for all four types.** A claim that cannot be shown to come from the selected text is dropped |
+| Q-7 | The 2,000 cap | **Unicode code points**, via `runes.length`, measured on the text that is actually sent. No silent truncation |
+
+**Value/span consistency, added by the CEO at this gate.** Grounding alone is
+not enough: span `RM180` with value `MYR80000` uses a real span as cover for a
+fabricated value. Where TINDAK's own deterministic validator can read the span,
+the model's value must be exactly what it derives. Implemented in ADR-033.
+
+## ADR-033 — Model output is untrusted input
+**Decision:** a model's response is treated exactly like the shared text it
+came from — data, never instruction, and never authority. A claim becomes a
+`DetectedEntity` only after all three of:
+
+1. **Grounding.** The claim quotes a span that occurs verbatim in the
+   normalised input. Located with `indexOf`; absent means dropped. This is what
+   makes prompt injection ineffective — a value the user's message does not
+   contain cannot become an action — and it yields the real offsets the domain
+   needs anyway.
+2. **Agreement.** Where TINDAK's own detectors can read the span, the model's
+   value must equal what they produce.
+3. **TINDAK's own rule** for the type: the same E.164 shape `ActionUriBuilder`
+   enforces, `MoneyValue.parse`, `DateValue.parse` plus a −1/+5 year window,
+   and the http/https host rule, plus PD-027's scheme requirement.
+
+**When agreement is mandatory.** For `phone` and `url`, always: those end in
+dialling and opening, and the local engine already reads every Malaysian number
+format and every scheme-bearing link, so a phone or link TINDAK cannot derive
+is not a gap worth the risk. For `money` and `date`, whenever the span contains
+a digit — `RM180`, `25/09/2026`. Agreement is waived only for wholly written
+forms such as `seribu lima ratus ringgit` and `Jumaat depan`, which are the
+reason AI is here at all, and which the user confirms in full before anything
+irreversible happens.
+
+**What this does not change.** The action engines stay the authority: an AI
+entity reaches `ActionResolver` and `ActionUriBuilder` through the same code as
+a local one and meets the same refusals. AI candidates carry a fixed confidence
+below every detector's minimum, so a deterministic reading always wins a tie —
+and that number is never shown, because ADR-009 rules it out and AI is not an
+exception. The model performs nothing: no tools, no function calling, no
+dialling, opening, saving, reminding or checking.
+
+**Detail:** `18_M9_PLAN.md` §6 and §8; evidence `20_TEST_PLAN.md` §9.5.
+**Status:** Accepted — CEO, M9 plan gate, 2026-09-16.
 
 ### CEO OVERRIDE — TINDAK Supabase project administration (2026-09-15)
 **Decision:** Claude Code may administer the **TINDAK Supabase project** for

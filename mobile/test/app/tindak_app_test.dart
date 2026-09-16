@@ -10,6 +10,8 @@ import 'package:tindak/core/failure/failure.dart';
 import 'package:tindak/core/result/result.dart';
 import 'package:tindak/features/actions/executor/action_runner.dart';
 import 'package:tindak/features/actions/executor/external_launcher.dart';
+import 'package:tindak/features/actions/widgets/entity_row.dart';
+import 'package:tindak/features/ai/ai_copy.dart';
 import 'package:tindak/features/home/home_screen.dart';
 import 'package:tindak/features/intake/clipboard_reader.dart';
 import 'package:tindak/features/intake/incoming_text.dart';
@@ -19,6 +21,7 @@ import 'package:tindak/features/memory/data/memory_repository.dart';
 import 'package:tindak/features/memory/memory_detail_screen.dart';
 import 'package:tindak/features/memory/memory_providers.dart';
 import 'package:tindak/features/memory/model/memory_record.dart';
+import 'package:tindak/features/security/security_copy.dart';
 import 'package:tindak/features/share/share_channel.dart';
 import 'package:tindak/features/understanding/model/understanding_result.dart';
 
@@ -559,8 +562,31 @@ void main() {
         launcher: launcher,
       );
 
-      expect(find.byType(OutlinedButton), findsNothing);
+      // No entity, so no action on those digits — the PD-029 guarantee.
+      expect(find.byType(EntityRow), findsNothing);
+      for (final label in <String>[
+        'Panggil',
+        'WhatsApp',
+        'Buka',
+        'Salin',
+        'Ingatkan',
+        SecurityCopy.checkAction,
+      ]) {
+        expect(find.text(label), findsNothing, reason: label);
+      }
       expect(launcher.launched, isEmpty);
+
+      // Since M9a the fallback offer appears on an unknown result, and it is
+      // the *only* button here. It acts on nothing by itself: pressing it asks
+      // before it sends, and in a build with no provider it sends nothing at
+      // all. An IC number must never become dialable, and it has not.
+      expect(
+        tester
+            .widgetList<OutlinedButton>(find.byType(OutlinedButton))
+            .length,
+        1,
+      );
+      expect(find.text(AiCopy.tryAction), findsOneWidget);
     });
   });
 
