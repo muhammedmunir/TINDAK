@@ -6,9 +6,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tindak/core/clock/clock_provider.dart';
 import 'package:tindak/core/result/result.dart';
 import 'package:tindak/features/actions/executor/action_runner.dart';
+import 'package:tindak/features/actions/model/action_descriptor.dart';
 import 'package:tindak/features/actions/widgets/entity_row.dart';
 import 'package:tindak/features/memory/memory_providers.dart';
 import 'package:tindak/features/memory/model/memory_record.dart';
+import 'package:tindak/features/reminders/reminder_providers.dart';
+import 'package:tindak/features/reminders/widgets/reminder_actions.dart';
+import 'package:tindak/features/reminders/widgets/reminder_section.dart';
 import 'package:tindak/features/sync/sync_providers.dart';
 import 'package:tindak/shared/saved_date_label.dart';
 
@@ -87,10 +91,19 @@ class _Detail extends ConsumerWidget {
                 EntityRow(
                   entity: entity,
                   actions: resolver.resolve(entity),
-                  onAction: (action) =>
-                      runActionWithFeedback(context, ref, action),
+                  onAction: (action) => action.kind == ActionKind.remind
+                      // The memory is already saved here, so the reminder
+                      // attaches to it directly (M7b).
+                      ? setReminderForEntity(
+                          context,
+                          ref,
+                          entity,
+                          memoryId: record.id,
+                        )
+                      : runActionWithFeedback(context, ref, action),
                 ),
             ],
+            ReminderSection(memoryId: record.id),
             const SizedBox(height: 28),
             _Label('Disimpan', theme),
             const SizedBox(height: 4),
@@ -144,6 +157,9 @@ class _Detail extends ConsumerWidget {
     );
     if (confirmed != true) return;
 
+    // Before the delete, not after: a guest memory takes its reminder rows
+    // with it by cascade, and the alarm id would be gone with them (M7b).
+    await ref.read(reminderServiceProvider).cancelForMemory(record.id);
     final result = await ref.read(memoryRepositoryProvider).delete(record.id);
 
     messenger.hideCurrentSnackBar();

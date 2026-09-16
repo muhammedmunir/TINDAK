@@ -5,6 +5,18 @@
          cleartext HTTP stays disabled below. Changes the Play Data Safety
          declaration (docs/14_M5B_RECONCILIATION.md section 5). -->
     <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- M7b reminders (ADR-008, ADR-024).
+         POST_NOTIFICATIONS is asked for at the moment the user sets their
+         first reminder, never at launch, and refusing it keeps the reminder
+         (PD-026).
+         RECEIVE_BOOT_COMPLETED lets the alarms come back after a restart;
+         without it every reminder set before a reboot would silently vanish.
+         There is deliberately no SCHEDULE_EXACT_ALARM and no USE_EXACT_ALARM:
+         a bill reminder tolerates a few minutes of drift, and a restricted
+         permission TINDAK does not need is a worse deal for the user. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <!-- Security posture: see docs/12_SECURITY.md sections 4 and 7 (ADR-021).
          allowBackup=false and the extraction rules stop the local database
          being copied into cloud backup or an adb backup, which is the
@@ -51,6 +63,25 @@
                 <data android:mimeType="text/plain"/>
             </intent-filter>
         </activity>
+        <!-- Restores scheduled reminders after a device restart. Android drops
+             every alarm at reboot, so without this receiver a reminder set
+             yesterday would never fire. TINDAK also reconciles its own
+             database against the scheduler at each app start, so a reboot the
+             receiver misses is repaired the next time the app runs. -->
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationBootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED"/>
+                <action android:name="android.intent.action.QUICKBOOT_POWERON"/>
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON"/>
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name="com.dexterous.flutterlocalnotifications.ScheduledNotificationReceiver"
+            android:exported="false"/>
+
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

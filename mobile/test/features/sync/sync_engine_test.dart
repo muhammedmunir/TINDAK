@@ -399,7 +399,7 @@ void main() {
       await save('pending');
       final guest = await save('guest', as: null);
 
-      expect(await store.purgeAccountIfSafe(userA), isFalse);
+      expect((await store.purgeAccountIfSafe(userA)).purged, isFalse);
       expect(await db.select(db.memories).get(), hasLength(2));
       expect(await rowOf(guest), isNotNull);
     });
@@ -410,7 +410,7 @@ void main() {
       final guest = await save('guest', as: null);
       await engine.sync(userA);
 
-      expect(await store.purgeAccountIfSafe(userA), isTrue);
+      expect((await store.purgeAccountIfSafe(userA)).purged, isTrue);
 
       expect(await rowOf(mine), isNull);
       expect(await rowOf(guest), isNotNull);

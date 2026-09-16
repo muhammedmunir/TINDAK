@@ -218,7 +218,8 @@ final class DriftMemoryRepository implements MemoryRepository {
       if (row == null) return const Result<void>.err(NotFoundFailure());
 
       // A guest row never leaves this phone, so there is no other copy to
-      // inform: it is removed outright, entities by cascade.
+      // inform: it is removed outright, entities and reminders by cascade. The
+      // reconciler cancels any alarm those reminders still held.
       if (row.ownerUserId == null) {
         await (_db.delete(_db.memories)..where((m) => m.id.equals(id))).go();
         return const Result<void>.ok(null);
@@ -229,15 +230,24 @@ final class DriftMemoryRepository implements MemoryRepository {
       // row may be in flight, and a hard delete now would let the next pull
       // bring it back. Sync never uploads the content of a tombstone.
       final now = _clock.now().toUtc().millisecondsSinceEpoch;
-      await (_db.update(_db.memories)..where((m) => m.id.equals(id))).write(
-        MemoriesCompanion(
-          deletedAt: Value<int?>(now),
-          // A device clock behind the save time must not break updated_at >=
-          // created_at. The server sets its own updated_at regardless.
-          updatedAt: Value<int>(now < row.createdAt ? row.createdAt : now),
-          syncStatus: const Value<String>(_pending),
-        ),
-      );
+      await _db.transaction(() async {
+        await (_db.update(_db.memories)..where((m) => m.id.equals(id))).write(
+          MemoriesCompanion(
+            deletedAt: Value<int?>(now),
+            // A device clock behind the save time must not break updated_at >=
+            // created_at. The server sets its own updated_at regardless.
+            updatedAt: Value<int>(now < row.createdAt ? row.createdAt : now),
+            syncStatus: const Value<String>(_pending),
+          ),
+        );
+        // A tombstoned row survives, so nothing cascades: its reminder is
+        // cancelled here, or it would alert for an item the user deleted (M7).
+        await _db.customStatement(
+          "UPDATE reminders SET status = 'cancelled', updated_at = ?2 "
+          "WHERE memory_id = ?1 AND status = 'scheduled'",
+          <Object?>[id, _clock.now().millisecondsSinceEpoch],
+        );
+      });
       return const Result<void>.ok(null);
     } catch (error, stackTrace) {
       return _storageFailure<void>('delete', error, stackTrace);

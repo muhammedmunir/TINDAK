@@ -519,6 +519,56 @@ inbox and no code was shared.
 
 ---
 
+## 9.2 M7 reminders — evidence record
+
+### Automated (2026-09-16)
+
+`flutter analyze` clean, **744/744** tests pass. Domain, reconciler, service,
+sheet and full-flow suites, all on the Dart VM with a pinned clock and a fake
+scheduler.
+
+### Emulator, M7b (2026-09-16)
+
+| # | Scenario | Result |
+|---|---|---|
+| 1 | Future reminder created | PASS — sheet shows the resolved date; Tetapkan disabled until a time is chosen |
+| 2 | Notification actually appears | PASS — fired at 05:40, alarm consumed |
+| 3 | Notification copy | PASS — "Peringatan TINDAK" / "Anda mempunyai peringatan yang dijadualkan.", `vis=PRIVATE`, no memory content |
+| 4 | Notification tap routing | PASS — opens that memory's detail directly (payload is the memory id only) |
+| 5 | Permission granted path | PASS — "Peringatan ditetapkan." |
+| 6 | Permission denied path | PASS — reminder kept, "Peringatan disimpan, tetapi notifikasi dimatikan.", detail shows "Notifikasi dimatikan" |
+| 7 | Buka Tetapan offered on refusal | PASS — action shown on the message |
+| 8 | Edit reschedules without duplicating | PASS — 5:20 → 8:20, exactly one alarm, time moved |
+| 9 | Cancel | PASS — alarm removed, memory kept |
+| 10 | Delete memory | PASS — alarm and rows gone |
+| 11 | App restart reconciliation | PASS — alarm restored after the plugin's store was cleared by a reinstall |
+| 12 | Ordinary reboot recovery | PASS — alarm present after reboot before the app was opened |
+| 13 | Offline lifecycle | PASS — in airplane mode: created, scheduled, and **fired**; past time refused and nothing saved |
+| 14 | Implicit Save from an unsaved result | PASS — memory and reminder committed together, one confirmation |
+| 15 | Fired state | PASS — shows "Selesai" and frees the slot |
+| 16 | Sign-out cancels account reminders | **Bug found and fixed** — see below; covered by tests, live re-check needs a new sign-in code |
+| 17 | Guest → account migration keeps reminders | Covered by automated tests; live check needs a new sign-in code |
+| 18 | No cloud reminder behaviour | PASS — cloud holds only `memories` and `memory_entities`; no reminder table, no RLS, no RPC |
+
+**Two defects found by this gate, both fixed:**
+
+1. **Scheduling never worked at first.** The plugin hands the timezone's *name*
+   to Java's `ZoneId.of`, which rejected the offset-only zone TINDAK had built.
+   Every schedule threw, and the reminder was kept with no alarm. Fixed by
+   scheduling the same instant expressed in UTC — a zone id every platform
+   accepts — with the chosen local time still authoritative (B-2).
+2. **Sign-out left a live alarm.** The purge deleted the account's memories
+   first, and the reminders went with them by cascade, so the alarm ids were
+   gone before anything could cancel them. The purge now reads those ids inside
+   its transaction and returns them; a test pins it.
+
+**Limitation, stated plainly:** the device clock cannot be changed on this
+emulator image (no root), so a timezone or clock change was not exercised
+live. It is covered by automated tests, and the reconciler recomputes each
+reminder from the local time the user chose on every start and resume.
+
+---
+
 ## 10. Integration
 
 ```text

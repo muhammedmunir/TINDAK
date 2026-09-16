@@ -108,7 +108,7 @@ void main() {
     expect(columns, isNot(contains('server_updated_at')));
   });
 
-  test('upgrades to version 2: server_updated_at and sync_meta', () async {
+  test('upgrades from version 1 to the current schema', () async {
     createVersion1Database();
 
     final db = TindakDatabase(NativeDatabase(file));
@@ -117,8 +117,47 @@ void main() {
     expect(await columnsOf(db, 'memories'), contains('server_updated_at'));
     expect(await columnsOf(db, 'sync_meta'), <String>['key', 'value']);
     expect(await db.select(db.syncMeta).get(), isEmpty);
+    expect(await columnsOf(db, 'reminders'), contains('remind_at'));
+    expect(await db.select(db.reminders).get(), isEmpty);
     final version = await db.customSelect('PRAGMA user_version').getSingle();
-    expect(version.read<int>('user_version'), 2);
+    expect(version.read<int>('user_version'), 3);
+  });
+
+  test('a version 1 device gains reminders without losing memories', () async {
+    createVersion1Database();
+
+    final db = TindakDatabase(NativeDatabase(file));
+    addTearDown(db.close);
+
+    // The M5a rows are still there, and the new table is usable straight away.
+    expect(await db.select(db.memories).get(), hasLength(2));
+    await db.customStatement(
+      'INSERT INTO reminders (id, memory_id, local_date, local_time, '
+      'time_zone, remind_at, status, created_at, updated_at) '
+      "VALUES ('55555555-5555-4555-8555-555555555555', ?, '2026-12-25', "
+      "'09:00', 'Asia/Kuala_Lumpur', 1, 'scheduled', 1, 1)",
+      <Object?>[guestId],
+    );
+    expect(await db.select(db.reminders).get(), hasLength(1));
+  });
+
+  test('the one-active-reminder index exists after an upgrade', () async {
+    createVersion1Database();
+
+    final db = TindakDatabase(NativeDatabase(file));
+    addTearDown(db.close);
+
+    final indexes = await db
+        .customSelect(
+          "SELECT name FROM sqlite_master WHERE type = 'index' "
+          "AND tbl_name = 'reminders'",
+        )
+        .get();
+
+    expect(
+      indexes.map((row) => row.read<String>('name')),
+      contains('reminders_one_active_per_memory'),
+    );
   });
 
   test('every existing row survives with every value', () async {
@@ -233,13 +272,21 @@ void main() {
     await expectLater(db.select(db.memories).get(), throwsA(anything));
   });
 
-  test('a fresh install creates version 2 directly', () async {
+  test('a fresh install creates the current schema directly', () async {
     final db = TindakDatabase(NativeDatabase(file));
     addTearDown(db.close);
 
     expect(await columnsOf(db, 'memories'), contains('server_updated_at'));
     expect(await columnsOf(db, 'sync_meta'), <String>['key', 'value']);
+    expect(await columnsOf(db, 'reminders'), contains('remind_at'));
+    final indexes = await db
+        .customSelect(
+          "SELECT name FROM sqlite_master WHERE type = 'index' "
+          "AND name = 'reminders_one_active_per_memory'",
+        )
+        .get();
+    expect(indexes, hasLength(1));
     final version = await db.customSelect('PRAGMA user_version').getSingle();
-    expect(version.read<int>('user_version'), 2);
+    expect(version.read<int>('user_version'), 3);
   });
 }

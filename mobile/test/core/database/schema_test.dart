@@ -39,8 +39,54 @@ void main() {
   );
 
   group('shape', () {
-    test('schema version is 2', () {
-      expect(db.schemaVersion, 2);
+    test('schema version is 3', () {
+      expect(db.schemaVersion, 3);
+    });
+
+    test('reminders has exactly the documented columns', () async {
+      expect(await columnsOf('reminders'), <String>[
+        'id',
+        'memory_id',
+        'owner_user_id',
+        'local_date',
+        'local_time',
+        'time_zone',
+        'remind_at',
+        'scheduled_at',
+        'status',
+        'notification_id',
+        'created_at',
+        'updated_at',
+      ]);
+    });
+
+    test('an unknown reminder status is refused', () async {
+      await insertMemory();
+      await expectLater(
+        db.customStatement(
+          'INSERT INTO reminders (id, memory_id, local_date, local_time, '
+          'time_zone, remind_at, status, created_at, updated_at) VALUES '
+          "('66666666-6666-4666-8666-666666666666', "
+          "'11111111-1111-4111-8111-111111111111', '2026-12-25', '09:00', "
+          "'X', 1, 'snoozed', 1, 1)",
+        ),
+        throwsA(isA<Exception>()),
+      );
+    });
+
+    test('deleting a memory deletes its reminders', () async {
+      await insertMemory();
+      await db.customStatement(
+        'INSERT INTO reminders (id, memory_id, local_date, local_time, '
+        'time_zone, remind_at, status, created_at, updated_at) VALUES '
+        "('77777777-7777-4777-8777-777777777777', "
+        "'11111111-1111-4111-8111-111111111111', '2026-12-25', '09:00', "
+        "'X', 1, 'scheduled', 1, 1)",
+      );
+
+      await db.customStatement('DELETE FROM memories');
+
+      expect(await db.select(db.reminders).get(), isEmpty);
     });
 
     test('memories has exactly the documented columns', () async {
@@ -98,6 +144,9 @@ void main() {
         'memories_visible_created_idx',
         'memory_entities_memory_idx',
         'memory_entities_search_idx',
+        'reminders_memory_idx',
+        'reminders_one_active_per_memory',
+        'reminders_remind_at_idx',
       ]);
     });
 
