@@ -34,6 +34,18 @@ final class DetectedEntity {
 
   int get length => end - start;
 
+  /// True when this is a date whose year TINDAK worked out rather than read
+  /// (PD-025).
+  ///
+  /// Derived from the written text, not stored: a date whose raw span carries
+  /// no four-digit year had its year inferred, and that stays true after a
+  /// save, a sync and a pull. M7 shows the resolved date in full and lets the
+  /// user change the year before a reminder is created.
+  bool get yearInferred =>
+      type == EntityType.date && !_fourDigitYear.hasMatch(rawValue);
+
+  static final RegExp _fourDigitYear = RegExp(r'\d{4}');
+
   /// True when this entity's span lies entirely within [other]'s and is not
   /// identical to it.
   bool isStrictlyInside(DetectedEntity other) =>

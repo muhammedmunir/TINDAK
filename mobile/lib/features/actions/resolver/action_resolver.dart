@@ -8,10 +8,12 @@ import 'package:tindak/features/understanding/model/entity_type.dart';
 /// is *available*. It never runs anything — that is `ActionRunner`, and only
 /// ever in response to a tap.
 ///
-/// | Entity | M4 actions |
+/// | Entity | Actions |
 /// |---|---|
 /// | phone | Call; WhatsApp when the number is a mobile |
 /// | url | Open |
+/// | money | Copy — the canonical amount (M6b) |
+/// | date | Reminder — which M6 does not yet create (M6b, M7) |
 final class ActionResolver {
   const ActionResolver();
 
@@ -26,6 +28,12 @@ final class ActionResolver {
     ],
     EntityType.url => <ActionDescriptor>[
       ActionDescriptor(kind: ActionKind.openUrl, entity: entity),
+    ],
+    EntityType.money => <ActionDescriptor>[
+      ActionDescriptor(kind: ActionKind.copy, entity: entity),
+    ],
+    EntityType.date => <ActionDescriptor>[
+      ActionDescriptor(kind: ActionKind.remind, entity: entity),
     ],
   };
 

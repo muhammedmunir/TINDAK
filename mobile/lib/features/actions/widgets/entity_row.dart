@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:tindak/features/actions/executor/action_runner.dart';
 import 'package:tindak/features/actions/model/action_descriptor.dart';
+import 'package:tindak/features/understanding/model/date_value.dart';
 import 'package:tindak/features/understanding/model/detected_entity.dart';
 import 'package:tindak/features/understanding/model/entity_type.dart';
+import 'package:tindak/features/understanding/model/money_value.dart';
 
 /// Shown when an action could not be carried out (PD-037).
 ///
@@ -12,6 +14,14 @@ import 'package:tindak/features/understanding/model/entity_type.dart';
 /// number or link and use it another way.
 const String actionUnavailableMessage =
     'Tindakan ini tidak dapat dibuka pada peranti ini.';
+
+/// Shown only after the clipboard has actually accepted the value (M6b).
+const String copiedMessage = 'Disalin.';
+
+/// A date's reminder belongs to M7. Approved copy: it says what will happen,
+/// not that something is broken, and nothing is scheduled.
+const String reminderComingSoonMessage =
+    'Peringatan akan tersedia dalam kemas kini akan datang.';
 
 /// Runs an action because the user pressed its button, and reports a failure
 /// quietly. Shared by the result screen and Memory detail, so a saved number
@@ -26,15 +36,22 @@ Future<void> runActionWithFeedback(
   final messenger = ScaffoldMessenger.of(context);
   final outcome = await ref.read(actionRunnerProvider).run(action);
 
+  void say(String message) => messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(message)));
+
   switch (outcome) {
     case ActionOutcome.launched:
     case ActionOutcome.busy:
       return;
+    // Said after the write succeeded, never before it (M6b).
+    case ActionOutcome.copied:
+      say(copiedMessage);
+    case ActionOutcome.notYetAvailable:
+      say(reminderComingSoonMessage);
     case ActionOutcome.rejected:
     case ActionOutcome.unavailable:
-      messenger
-        ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text(actionUnavailableMessage)));
+      say(actionUnavailableMessage);
   }
 }
 
@@ -63,6 +80,16 @@ class EntityRow extends StatelessWidget {
       // UX section 6 shows the host. It is the part of a link that decides
       // where it really goes, and the part a lookalike tries to disguise.
       EntityType.url => (Icons.link, 'Pautan', hostOf(entity.normalizedValue)),
+      EntityType.money => (
+        Icons.payments_outlined,
+        'Wang',
+        displayValue(entity),
+      ),
+      EntityType.date => (
+        Icons.event_outlined,
+        'Tarikh',
+        displayValue(entity),
+      ),
     };
 
     return Padding(
@@ -117,6 +144,13 @@ class EntityRow extends StatelessWidget {
   static String displayValue(DetectedEntity entity) => switch (entity.type) {
     EntityType.phone => entity.rawValue,
     EntityType.url => hostOf(entity.normalizedValue),
+    // Canonical, not as typed: `rm25` reads as `RM25.00`, and a date always
+    // shows its full resolved year (PD approvals A-2 and A-3). A value this
+    // build cannot read falls back to the text the user wrote.
+    EntityType.money =>
+      MoneyValue.parse(entity.normalizedValue)?.display ?? entity.rawValue,
+    EntityType.date =>
+      DateValue.parse(entity.normalizedValue)?.display ?? entity.rawValue,
   };
 
   static String hostOf(String url) {
@@ -130,11 +164,15 @@ class EntityRow extends StatelessWidget {
     ActionKind.call => 'Panggil',
     ActionKind.whatsapp => 'WhatsApp',
     ActionKind.openUrl => 'Buka',
+    ActionKind.copy => 'Salin',
+    ActionKind.remind => 'Ingatkan',
   };
 
   static IconData _iconFor(ActionKind kind) => switch (kind) {
     ActionKind.call => Icons.call_outlined,
     ActionKind.whatsapp => Icons.chat_outlined,
     ActionKind.openUrl => Icons.open_in_new,
+    ActionKind.copy => Icons.content_copy_outlined,
+    ActionKind.remind => Icons.notifications_none,
   };
 }

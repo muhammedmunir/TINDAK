@@ -1,4 +1,7 @@
+import 'package:tindak/core/clock/clock.dart';
+import 'package:tindak/features/understanding/detectors/date_detector.dart';
 import 'package:tindak/features/understanding/detectors/entity_detector.dart';
+import 'package:tindak/features/understanding/detectors/money_detector.dart';
 import 'package:tindak/features/understanding/detectors/phone_detector.dart';
 import 'package:tindak/features/understanding/detectors/url_detector.dart';
 import 'package:tindak/features/understanding/model/detected_entity.dart';
@@ -28,10 +31,27 @@ final class UnderstandingEngine {
   /// is analysed (docs/10_ARCHITECTURE.md section 9.2).
   static const int defaultMaxInputLength = 10000;
 
+  /// Detectors with a real clock. A date with no year resolves against today,
+  /// so anything that depends on "today" should build the engine with
+  /// [UnderstandingEngine.withClock] instead.
   static const List<EntityDetector> defaultDetectors = <EntityDetector>[
     UrlDetector(),
     PhoneDetector(),
+    MoneyDetector(),
+    DateDetector(),
   ];
+
+  /// The engine with its clock injected — what the app uses, and what a test
+  /// pins so no-year dates behave the same in January as in December
+  /// (docs/20_TEST_PLAN.md section 1).
+  factory UnderstandingEngine.withClock(Clock clock) => UnderstandingEngine(
+    detectors: <EntityDetector>[
+      const UrlDetector(),
+      const PhoneDetector(),
+      const MoneyDetector(),
+      DateDetector(clock: clock),
+    ],
+  );
 
   final ContentNormalizer normalizer;
   final List<EntityDetector> detectors;

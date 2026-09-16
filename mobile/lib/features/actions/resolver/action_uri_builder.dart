@@ -38,6 +38,9 @@ final class ActionUriBuilder {
       ActionKind.call => _call(action, value),
       ActionKind.whatsapp => _whatsapp(action, value),
       ActionKind.openUrl => _openUrl(action, value),
+      // Neither leaves the device or starts another app, so neither has a URI
+      // to build. They are carried out by the runner itself.
+      ActionKind.copy || ActionKind.remind => null,
     };
   }
 
