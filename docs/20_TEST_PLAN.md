@@ -480,7 +480,7 @@ or plan upgrade.
 | Item | Value |
 |---|---|
 | SMTP | enabled — `smtp.resend.com:465`, user `resend`, password set (not printed) |
-| Sender | `TINDAK <onboarding@resend.dev>` — Resend test sender, delivers only to the Resend account owner; domain `muhammedmunir.my` DNS pending |
+| Sender | `TINDAK <auth@tindak.muhammedmunir.my>` — domain verified in Resend (DKIM and both SPF records), sender accepted by a live send test |
 | OTP length / expiry | 6 digits / 3600 s |
 | Magic Link subject + body | `Kod log masuk TINDAK`, body exactly the approved copy |
 | Confirm signup subject + body | `Kod log masuk TINDAK`, body exactly the approved copy |
