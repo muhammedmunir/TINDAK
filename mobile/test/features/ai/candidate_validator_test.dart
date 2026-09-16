@@ -273,15 +273,52 @@ void main() {
   });
 
   group('the response is parsed, not trusted', () {
-    test('an unsupported type is dropped', () {
-      expect(
-        AiCandidate.tryParse(<String, Object?>{
-          'type': 'bank_account',
-          'span': '1234',
-          'value': '1234',
-        }),
-        isNull,
-      );
+    test('the allow-list is exactly the four TINDAK can act on (PD-050)', () {
+      // AI may read natural language into a type that already exists. It may
+      // not invent one. A new type is a Product Direction decision, and this
+      // assertion is what makes adding one deliberate rather than incidental.
+      expect(EntityType.values, <EntityType>[
+        EntityType.phone,
+        EntityType.url,
+        EntityType.money,
+        EntityType.date,
+      ]);
+
+      for (final name in <String>['phone', 'url', 'money', 'date']) {
+        expect(
+          AiCandidate.tryParse(<String, Object?>{
+            'type': name,
+            'span': 'x',
+            'value': 'y',
+          }),
+          isNotNull,
+          reason: name,
+        );
+      }
+    });
+
+    test('an unsupported type is dropped (PD-050)', () {
+      for (final name in <String>[
+        'bank_account',
+        'flight',
+        'person',
+        'task',
+        'restaurant',
+        'medical',
+        'address',
+        'PHONE',
+        '',
+      ]) {
+        expect(
+          AiCandidate.tryParse(<String, Object?>{
+            'type': name,
+            'span': '1234',
+            'value': '1234',
+          }),
+          isNull,
+          reason: name,
+        );
+      }
     });
 
     test('missing or wrongly typed fields are dropped', () {

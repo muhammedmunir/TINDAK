@@ -2,14 +2,14 @@
 
 **Owner:** Shared governance
 **Status:** ARCHITECTURE LOCKED — 2026-09-10
-ADR-001…ADR-033 Accepted · PD-001…PD-048 Accepted
+ADR-001…ADR-033 Accepted · PD-001…PD-050 Accepted
 
 Three registers, all binding:
 
 - **ADR-001…ADR-012** — founding decisions from the master plan.
-- **PD-001…PD-048** — product decisions. PD-001…PD-022 locked with Product Pack
+- **PD-001…PD-050** — product decisions. PD-001…PD-022 locked with Product Pack
   V1; PD-023…PD-029 from the Product Direction review of the Technical Pack;
-  PD-030…PD-031 at Architecture Lock; PD-032…PD-048 from milestone reviews.
+  PD-030…PD-031 at Architecture Lock; PD-032…PD-050 from milestone reviews.
 - **ADR-013…ADR-028** — architecture decisions from the Technical Pack.
   Product Direction passed them and the CEO locked them on 2026-09-10. They are
   binding for V1 unless superseded by a later CEO-approved decision.
@@ -758,6 +758,50 @@ Edge Function and a decision — not a redesign.
 not enough: span `RM180` with value `MYR80000` uses a real span as cover for a
 fabricated value. Where TINDAK's own deterministic validator can read the span,
 the model's value must be exactly what it derives. Implemented in ADR-033.
+
+### PD-049 — AI result disclosure
+Every AI-derived result carries:
+
+> **Maklumat ini dicadangkan oleh AI. Semak sebelum anda bertindak.**
+
+It names where the information came from and leaves the decision with the user,
+without a fake confidence number — ADR-009 rules those out, and AI is not an
+exception.
+
+Shown on AI results only. A deterministic local result does not carry it,
+because nothing about it was suggested.
+
+**Status:** Accepted — CEO, M9a gate, 2026-09-16.
+
+### PD-050 — AI entity boundary
+AI may interpret natural language into an **existing** entity type. It may not
+invent a new one.
+
+Allowed, because the value lands in a type TINDAK already knows how to act on:
+
+```text
+"seribu lima ratus ringgit"  → money  MYR150000
+"Jumaat depan"               → date   2026-09-18
+```
+
+Not allowed, at any confidence, from any model:
+
+```text
+"akaun Maybank saya…"  → bank_account
+"naik MH123…"          → flight
+"jumpa Ali…"           → person
+```
+
+The allow-list stays the four values of `EntityType`: phone, url, money, date.
+A new type is a Product Direction decision with its own brief, not a model
+capability that arrives by itself.
+
+Enforced structurally, not by intention: the AI layer reuses `EntityType`
+rather than declaring a parallel enum, so an unsupported type cannot be parsed,
+and adding one would break every exhaustive switch in the action layer. A test
+pins the four names the wire format accepts.
+
+**Status:** Accepted — CEO, M9a gate, 2026-09-16.
 
 ## ADR-033 — Model output is untrusted input
 **Decision:** a model's response is treated exactly like the shared text it
