@@ -135,27 +135,45 @@ because that device never scheduled it. **Stated as a known V1 limitation** —
 raising it to Product Direction rather than silently building server push, which
 ADR-007 excludes.
 
-### 2.5 `security_scans`
+### 2.5 `reputation_usage` — as built at M8b
+
+**`security_scans` was not created, and V1 does not create it.** The design
+above it in earlier drafts stored a URL, a host, a verdict and a provider id per
+check. That is a browsing history under another name, and M8 turned out not to
+need one: the quota is the only thing the server must remember, and a quota
+needs a count, not a history.
+
+What exists instead is the smallest table that enforces PD-028's 60 per user
+per day:
 
 ```sql
-create table public.security_scans (
-  id         uuid primary key,
-  user_id    uuid not null references auth.users(id) on delete cascade,
-  url        text not null,
-  host       text not null,
-  verdict    text not null check (verdict in ('low','caution','suspicious','high')),
-  reasons    jsonb not null default '[]'::jsonb,
-  provider   text,
-  created_at timestamptz not null default now()
+create table public.reputation_usage (
+  user_id uuid    not null references auth.users(id) on delete cascade,
+  day     date    not null,
+  checks  integer not null default 0,
+  primary key (user_id, day)
 );
-
-create index security_scans_user_created_idx
-  on public.security_scans (user_id, created_at desc);
 ```
 
-**30-day retention** (approved, PD-028), purged by a scheduled job. A scan history is a
-browsing history; keeping it forever creates a privacy liability with no product
-value. Not synced to the device.
+Three columns, and **no URL, no host, no verdict, no provider id, no timestamp
+of an individual check**. Nothing here says which links a person looked at, only
+how many times they asked on a given day.
+
+- **Server-side quota enforcement only.** The count is claimed inside
+  `consume_reputation_check()`, which is `service_role`-only; the app never
+  reads or writes this table and has no reason to.
+- **RLS is enabled with zero policies.** No client can read this table — not
+  another person's row, and not their own. The Edge Function reaches it as
+  `service_role`, which is outside RLS.
+- **Purged on a schedule**, `tindak-purge-reputation-usage` on pg_cron, daily at
+  18:30 UTC. PD-028's "`security_scans` retention 30 days" now applies to this
+  quota metadata, which is all that is kept.
+- **No scan history is persisted anywhere**, on the server or the device. A
+  result exists for as long as the screen showing it does.
+- Not synced to the device.
+
+Evidence: `20_TEST_PLAN.md` §9.4. Migration:
+`supabase/migrations/20260916000001_reputation_quota.sql`.
 
 ### 2.6 `usage_events`
 
@@ -289,8 +307,8 @@ database `CHECK` — the repository still enforces the limit — and should be
 reinstalled. Once any build ships, every schema change bumps the version with an
 explicit migration (§6).
 
-`reminders` arrives at M7. `security_scans` and `usage_events` have no local
-table — neither is needed offline.
+`reminders` arrives at M7. `reputation_usage` (§2.5) and `usage_events` have no
+local table — neither is needed offline, and neither is a store of user content.
 
 ### 3.1 Search — as built (proposed amendment to ADR-015, ADR-030)
 
@@ -404,5 +422,6 @@ The CEO approves this schema before the first production migration is applied.
 - Whether reminders that do not fire on a second device (§2.4) is acceptable
   for V1. Product Direction decides — tracked as O-4 in `90_DECISIONS.md`.
 
-Closed: tombstone purge 90 days and `security_scans` retention 30 days are
-approved as PD-028.
+Closed: tombstone purge 90 days is approved as PD-028. PD-028's 30-day scan
+retention applies to `reputation_usage` (§2.5), the only M8 persistence; the
+`security_scans` table it was written for was never created.

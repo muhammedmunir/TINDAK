@@ -258,6 +258,14 @@ verdict, reason codes, provider and time; (b) keep the full URL as designed;
 record, and stores materially less. This amends `11_DATABASE.md` §2.5 and needs
 an ADR.
 
+> **Resolved at the M8 Final Gate (2026-09-16): (c).** Not the recommendation.
+> Once the quota was written as an atomic counter, the host, verdict, reason
+> codes and provider id in option (a) turned out to serve nothing — no feature
+> reads them, and an "operational record" nobody queries is a privacy liability
+> with no product value. `security_scans` was never created. The only M8
+> persistence is `reputation_usage` — `user_id`, `day`, `checks`. Approved by
+> the CEO; PD-028's retention row amended accordingly in `90_DECISIONS.md`.
+
 **C-4 — The brand-lookalike check.** `12_SECURITY.md` §9 lists it; it needs a
 curated list of Malaysian brand names, and a false positive tells someone a real
 bank's site is fake. **Recommendation: leave it out of M8a**, revisit with real

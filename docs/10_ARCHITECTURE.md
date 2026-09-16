@@ -578,14 +578,24 @@ Enhancement* and revisited with beta data. Specification in `20_TEST_PLAN.md`
 
 Operational configuration is approved as PD-028: tombstone purge 90 days, share
 cap 10,000 characters, AI input 2,000 characters, AI 30/day and 5/minute,
-timeouts 8s/12s, reputation 60/day, `security_scans` retention 30 days,
+timeouts 8s/12s, reputation 60/day, 30-day retention on reputation data,
 SQLCipher deferred.
+
+**Amended at the M8 gate.** PD-028's 30-day retention was written for a
+`security_scans` table. That table was never created: M8 stores no checked URL,
+host, verdict or scan history at all, and its only persistence is
+`reputation_usage` — `user_id`, `day`, `checks` — which exists solely to enforce
+the 60/day quota server-side, carries RLS with zero client policies, and is
+purged daily. The retention decision now applies to that (`11_DATABASE.md`
+§2.5).
 
 Remaining:
 
-- **URL reputation provider** — verified against current official
-  documentation; see `13_API.md` §5. Safe Browsing is **not usable** by TINDAK.
-  Web Risk Lookup API is the recommendation and needs CEO approval.
+- **URL reputation provider** — **decided.** Safe Browsing is not usable by
+  TINDAK on terms; Web Risk is adopted (ADR-028) and stays behind the provider
+  abstraction. A successful live Web Risk lookup is **deferred under PD-047** —
+  it needs a billing-enabled Google Cloud project — so V1 ships with no key and
+  the check reads as unavailable rather than clean. See `13_API.md` §5.
 - Whether Google Sign-In lands in V1 or later (`13_API.md` §1.1).
 - Reminders synced to a second device do not fire there in V1
   (`11_DATABASE.md` §2.4) — Product Direction has not yet ruled.

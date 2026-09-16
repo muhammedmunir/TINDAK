@@ -119,8 +119,18 @@ Approved as tunable configuration, not immutable product constants.
 | AI burst | 5 per user per minute |
 | AI timeout | 8s upstream / 12s client |
 | External reputation quota | 60 per user per day |
-| `security_scans` retention | 30 days |
+| Reputation data retention | 30 days |
 | SQLCipher | deferred for V1 |
+
+**Amended at the M8 gate, 2026-09-16.** The retention row read
+"`security_scans` retention — 30 days". That table was never created: M8 stores
+no checked URL, host, verdict or scan history at all. Its only persistence is
+`reputation_usage` — `user_id`, `day`, `checks` — which exists solely for
+server-side quota enforcement, has RLS enabled with **zero** client policies,
+and is purged daily by `tindak-purge-reputation-usage`. The 30-day retention
+applies to that quota metadata. The value of the decision is unchanged; what it
+governs is smaller, and holds no user content. CEO approved the omission at the
+M8 Final Gate. Detail: `11_DATABASE.md` §2.5, evidence `20_TEST_PLAN.md` §9.4.
 
 ### PD-029 — IC and USSD protection are required safety requirements
 A Malaysian IC number must never become a Call or WhatsApp candidate, and
@@ -502,15 +512,24 @@ pricing shipped.
 
 **Constraints:** the key lives only in Edge Function config; the function maps
 the provider response onto TINDAK's own four verdicts and stable reason codes,
-so replacing the provider touches neither client nor schema; the provider id is
-stored on every `security_scans` row. Web Risk's Update API would leak less but
-costs materially more and is recorded as a future privacy improvement, not V1.
+so replacing the provider touches neither client nor schema. Web Risk's Update
+API would leak less but costs materially more and is recorded as a future
+privacy improvement, not V1.
+
+~~the provider id is stored on every `security_scans` row~~ — **amended at the
+M8 gate, 2026-09-16.** No `security_scans` table was created, so there is no row
+to carry a provider id, and M8 stores no checked URL, host or verdict anywhere.
+Which provider answered is a deployment fact, read from the function's source
+and its configured secrets. The abstraction survived this intact: it is
+`ReputationProvider` with `EdgeReputationProvider` as its one implementation.
 
 **Detail:** `13_API.md` §5.
-**Status:** Accepted — CEO Architecture Lock, 2026-09-10. Web Risk is the planned
-V1 provider. **Google Cloud billing and API provisioning are deferred until
-before M8** and do not block M1. The `ReputationProvider` abstraction is
-mandatory so domain logic is never bound to Google.
+**Status:** Accepted — CEO Architecture Lock, 2026-09-10. Web Risk is the V1
+provider. The `ReputationProvider` abstraction is mandatory so domain logic is
+never bound to Google — built and enforced by tests at M8b.
+**Amended by PD-047, 2026-09-16:** Google Cloud billing is **not** accepted and
+a successful live Web Risk lookup is deferred. V1 ships with no key; the check
+reads as unavailable, never as clean.
 
 ## ADR-029 — Amends ADR-003: explicit intake, not share-only
 **Decision:** ADR-003's principle was that TINDAK never captures content

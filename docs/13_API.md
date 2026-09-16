@@ -248,15 +248,30 @@ abstract interface class ReputationProvider {
 One implementation in V1. The Edge Function maps every provider's response onto
 TINDAK's own four verdicts and stable reason codes (§3.2), so replacing the
 provider changes one function and touches neither the client nor the database.
-The provider id is stored on each `security_scans` row, so a later change is
-visible in the data.
+
+**No provider id is stored**, because no scan row is stored: `security_scans`
+was never created and the only M8 table is the quota counter
+(`11_DATABASE.md` §2.5). Which provider answered is a deployment fact, visible
+in the function's source and its configured secrets, not something to be
+reconstructed from a table of everybody's links.
+
+As built, the abstraction is `ReputationProvider` in
+`mobile/lib/features/security/data/reputation_provider.dart`, with
+`EdgeReputationProvider` as the single implementation. The provider layer is
+therefore already switchable — which is what makes PD-047 a deferral rather
+than a gap.
 
 Local heuristics (`12_SECURITY.md` §9) run first regardless of provider, so a
 guest, an offline user, or a provider outage still gets a partial, explainable
 answer.
 
-**Needs CEO approval:** adopt Web Risk, including accepting a Google Cloud
-billing account before M8. Sources:
+**Decided at M8b.** Web Risk is adopted as the V1 provider (ADR-028), and the
+Google Cloud billing account it requires is **not** accepted: enabling billing
+is a payment the project is not making, so live Web Risk lookups are deferred
+under **PD-047**. The function ships with no `WEB_RISK_API_KEY`, answers
+`unavailable`, and — because the key is read before the quota is claimed —
+spends none of the user's 60 while it is unconfigured. Enabling the provider
+later is a key and a redeploy, not a redesign. Sources:
 [Safe Browsing usage restrictions](https://developers.google.com/safe-browsing/v4/usage-limits),
 [Safe Browsing overview](https://developers.google.com/safe-browsing),
 [Web Risk pricing](https://cloud.google.com/web-risk/pricing).

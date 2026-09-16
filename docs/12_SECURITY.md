@@ -54,12 +54,22 @@ alter table public.profiles        enable row level security;
 alter table public.memories        enable row level security;
 alter table public.memory_entities enable row level security;
 alter table public.reminders       enable row level security;
-alter table public.security_scans  enable row level security;
 alter table public.usage_events    enable row level security;
+
+-- As built at M8b. `security_scans` was never created (11_DATABASE.md §2.5);
+-- this is the table that took its place.
+alter table public.reputation_usage enable row level security;
 ```
 
 No table is left out. A table created later without RLS is a release blocker on
 its own.
+
+`reputation_usage` is the one table that enables RLS and then defines **no
+policies at all**. That is deliberate, not an omission: it holds server-side
+quota counters, no client has any business reading it, and RLS with an empty
+policy set denies every client read and write. The Edge Function reaches it as
+`service_role`, which is outside RLS. Verified live — see `20_TEST_PLAN.md`
+§9.4.
 
 ### 3.2 Policies
 
@@ -325,11 +335,19 @@ was rejected — an automatic check would leak every shared URL to a vendor.
   brand name in the path.
 - The external lookup happens only on the explicit tap.
 - The first external check shows the same kind of disclosure as AI consent.
-- `security_scans` rows expire after 30 days (`11_DATABASE.md` §2.5).
-- Provider failure never renders as safe (UX §23).
-- The recommended provider is **Google Web Risk**, not Safe Browsing — Safe
+- **Nothing about a check is kept.** No checked URL, host, verdict or provider
+  answer is stored on the server or the device, and there is no scan history for
+  a user to review or for an attacker to steal. The only M8 persistence is
+  `reputation_usage` — `user_id`, `day`, `checks` — which enforces the quota and
+  is purged daily (`11_DATABASE.md` §2.5).
+- Provider failure never renders as safe (UX §23). Nor does a provider that is
+  not configured: with no key the check reads as unavailable, never as clean.
+- The chosen provider is **Google Web Risk**, not Safe Browsing — Safe
   Browsing's terms forbid revenue-generating use, and TINDAK plans a paid tier.
-  Verified against current official documentation in `13_API.md` §5.
+  Verified against current official documentation in `13_API.md` §5. It stays
+  behind the provider abstraction, and **a successful live Web Risk lookup is
+  deferred under PD-047**: the key would need a billing-enabled Google Cloud
+  project, so V1 ships with no key configured.
 - Web Risk's Lookup API receives the full URL. Its Update API would keep a local
   hash list and leak far less, at materially higher complexity and cost; it is
   recorded as a future privacy improvement, not V1.
