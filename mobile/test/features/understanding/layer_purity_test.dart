@@ -73,12 +73,32 @@ void main() {
     );
   });
 
-  test('nothing in the app talks to a network yet (M5a)', () {
-    // Local Memory must work with no network permission and no connection.
-    // Cloud sync is M5b; a network client arriving early because "sync is
-    // coming" is exactly what this milestone forbids.
+  test('only the approved cloud adapters talk to the network (M5b)', () {
+    // docs/13_API.md: Supabase is the only network interface. It is reached
+    // from exactly these files; everything else — the sync rules included —
+    // works through pure interfaces and is testable with no server. A new
+    // file importing Supabase must be added here deliberately, in review.
+    const approved = <String>{
+      'lib/app/cloud_bootstrap.dart',
+      'lib/features/auth/data/secure_session_storage.dart',
+      'lib/features/auth/data/supabase_auth_gateway.dart',
+      'lib/features/sync/data/supabase_cloud_memory_api.dart',
+    };
+    final supabase = RegExp(r'''import\s+['"]package:supabase''');
+    final users = <String>[];
+    for (final entity in Directory('lib').listSync(recursive: true)) {
+      if (entity is! File || !entity.path.endsWith('.dart')) continue;
+      if (supabase.hasMatch(entity.readAsStringSync())) {
+        users.add(entity.path.replaceAll(r'\', '/'));
+      }
+    }
+    expect(users.toSet(), approved);
+  });
+
+  test('nothing talks to the network except through Supabase', () {
+    // No second HTTP stack, no analytics SDK (docs/10_ARCHITECTURE.md
+    // section 12).
     final network = <RegExp>[
-      RegExp(r'''import\s+['"]package:supabase'''),
       RegExp(r'''import\s+['"]package:http/'''),
       RegExp(r'''import\s+['"]package:dio/'''),
       RegExp(r'''import\s+['"]package:web_socket'''),

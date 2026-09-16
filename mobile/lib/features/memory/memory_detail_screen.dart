@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -7,6 +9,7 @@ import 'package:tindak/features/actions/executor/action_runner.dart';
 import 'package:tindak/features/actions/widgets/entity_row.dart';
 import 'package:tindak/features/memory/memory_providers.dart';
 import 'package:tindak/features/memory/model/memory_record.dart';
+import 'package:tindak/features/sync/sync_providers.dart';
 import 'package:tindak/shared/saved_date_label.dart';
 
 /// One saved item (UX section 16).
@@ -23,6 +26,14 @@ class MemoryDetailScreen extends ConsumerWidget {
 
   /// PD-020: status in human terms, never database terms.
   static const String onDeviceStatus = 'Pada peranti ini';
+  static const String pendingSyncStatus = 'Menunggu sync ke akaun';
+  static const String syncedStatus = 'Disimpan dalam akaun';
+
+  static String statusFor(MemoryStorage storage) => switch (storage) {
+    MemoryStorage.deviceOnly => onDeviceStatus,
+    MemoryStorage.pendingSync => pendingSyncStatus,
+    MemoryStorage.synced => syncedStatus,
+  };
 
   static const String deleteLabel = 'Padam';
   static const String confirmTitle = 'Padam item ini?';
@@ -89,7 +100,7 @@ class _Detail extends ConsumerWidget {
             ),
             const SizedBox(height: 2),
             Text(
-              MemoryDetailScreen.onDeviceStatus,
+              MemoryDetailScreen.statusFor(record.storage),
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -137,6 +148,8 @@ class _Detail extends ConsumerWidget {
 
     messenger.hideCurrentSnackBar();
     if (result.isOk) {
+      // An account item's deletion reaches the cloud through sync (PD-021).
+      unawaited(ref.read(syncControllerProvider.notifier).requestSync());
       messenger.showSnackBar(
         const SnackBar(content: Text(MemoryDetailScreen.deletedMessage)),
       );

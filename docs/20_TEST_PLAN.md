@@ -366,6 +366,151 @@ heading. A run that was not recorded did not happen.
 **M5b does not pass its gate until every row of that matrix is recorded as
 failing to gain access.**
 
+### 9.1 M5b evidence record
+
+Environment: the single Supabase project (CEO decision). Run order
+`20260915000001` → `…0002` → `…0003` → `supabase/tests/rls_memories.sql`.
+
+#### Automated (2026-09-15) — PASS
+
+- `flutter analyze`: no issues. `flutter test`: **499/499**.
+- Covers: account-aware save/visibility/delete, push/pull/tombstone rules,
+  offline queue and lost-reply retry, delete racing an in-flight push, paging and
+  cursor overlap, 80-day reconciliation keeping pending changes, coalesced runs,
+  no content in sync logs, migration prompt decline/accept/resume, fail-safe
+  sign-out, expired session hiding account items (PD-017), sign-in errors.
+- Real-file schema upgrade v1 → v2 (`migration_test.dart`).
+
+#### Emulator, no account (2026-09-15) — PASS
+
+| Check | Result |
+|---|---|
+| Install over M5a with `adb install -r`, data kept | M5a memory present after v1 → v2 upgrade |
+| APK permissions | `INTERNET` only new permission |
+| Home and Tetapan render with cloud config | yes |
+| Tetapan opened and closed 17×, including 4 home/resume cycles and recents | opened every time, same process throughout, no crash or error in logcat |
+| Earlier single unexplained close | not reproduced; no TINDAK entry in the crash buffer |
+
+#### Supabase migrations and RLS matrix (2026-09-15) — 32/32 PASS
+
+Run by Claude under the CEO override, project `bgagjiefhfkxrabmaipz`, Postgres
+17.6, through the session pooler. Read-only check first: public schema empty,
+0 users.
+
+| Step | Result |
+|---|---|
+| `20260915000001_memories.sql` (one transaction) | applied |
+| `20260915000002_memories_rls.sql` (one transaction) | applied |
+| `20260915000003_push_memory.sql` (one transaction) | applied |
+| `rls_memories.sql`, run 1 | **31/32 — P-5 FAIL** |
+| `rls_memories.sql`, run 2 | **32/32 PASS** |
+| After run 2 | 0 users, 0 memories, 0 entities left; RLS on both tables; 5 policies |
+
+**P-5 diagnosis.** The script runs in one transaction, where `now()` is
+constant, so P-5's `ts_after > ts_before` could never hold. The observed value
+was already server time, not the client's `2000-01-01`, so the protection held
+and the test was wrong. The fix makes P-5 stricter, not looser: the tombstone
+update now also sends `updated_at = 2000-01-01`, and both insert and update
+must come back as server time. P-8's "same time" is equally trivial inside one
+transaction; its idempotency is proven by the entity count staying at 1.
+
+Run 2 grid:
+
+| id | check | observed | result |
+|---|---|---|---|
+| P-1 | A creates own memory | allowed | PASS |
+| P-2 | A adds entity to own memory | allowed | PASS |
+| P-3 | A reads own memory with entity | 1 row | PASS |
+| P-4 | A tombstones own memory | 1 row | PASS |
+| P-5 | client-supplied updated_at is ignored | insert and update both server time | PASS |
+| P-6 | 10,000 emoji (code points) accepted | allowed | PASS |
+| P-7 | A pushes memory + entity via push_memory | allowed, 1 entity | PASS |
+| P-8 | repeated push is idempotent | allowed, 1 entity | PASS |
+| B-15 | A pushes using B memory id | denied, B unchanged | PASS |
+| B-1 | A reads B memory by id | 0 rows | PASS |
+| B-3 | A inserts memory as B | denied | PASS |
+| B-4 | A reassigns own memory to B | denied | PASS |
+| B-5 | A deletes B memory | denied, row intact | PASS |
+| B-5b | A hard deletes own memory | denied | PASS |
+| B-6 | A reads B entities | 0 rows | PASS |
+| B-7 | A reaches B rows via join | 0 rows | PASS |
+| B-12 | A enumerates auth.users | denied | PASS |
+| B-13 | A attaches entity to B memory | denied | PASS |
+| B-13b | A adds entity to own memory as B | denied | PASS |
+| B-14 | A tombstones B memory | 0 rows updated | PASS |
+| I-1 | A rewrites own memory text | denied | PASS |
+| I-2 | A restores own tombstone | denied | PASS |
+| I-3 | 10,001 code points refused | denied | PASS |
+| I-4 | A creates an already-deleted memory | denied | PASS |
+| I-5 | A adds entity to own tombstone | denied | PASS |
+| I-6 | unknown intake_source refused | denied | PASS |
+| I-7 | push with invalid entity is all-or-nothing | denied, 0 rows | PASS |
+| B-2 | anon reads memories | denied | PASS |
+| B-2b | anon inserts memory | denied | PASS |
+| B-2c | anon calls push_memory | denied, grant absent | PASS |
+| S-1 | push_memory invoker-rights, search_path locked | invoker, search_path="" | PASS |
+| Z-1 | test data removed | 0 rows | PASS |
+
+Required for every future run: the grid has exactly
+**32 rows** and every row must be PASS:
+P-1…P-8 (8), B-1, B-2, B-2b, B-2c, B-3…B-7, B-5b, B-12, B-13, B-13b, B-14,
+B-15 (15), I-1…I-7 (7), S-1, Z-1 (2). A grid with fewer rows means the script
+stopped early and is a failure.
+
+#### Auth email configuration (2026-09-15) — BLOCKED
+
+Through the Management API, project `bgagjiefhfkxrabmaipz` confirmed first.
+
+| Item | Before | After |
+|---|---|---|
+| OTP length | 8 digits (would break ADR-020 and the six-digit app) | **6** |
+| OTP expiry | 3600 s | unchanged |
+| Magic Link / Confirm signup templates | Supabase default: link only, no `{{ .Token }}` | **unchanged — refused** |
+| Custom SMTP | not set | not set |
+| Email send rate limit | 2 per hour (built-in sender) | unchanged |
+
+The template update was refused: *"Email template modification is not available
+for free tier projects using the default email provider. Please upgrade your plan
+or configure a custom SMTP provider."* With the default templates the email has
+no code, so real OTP sign-in cannot be tested. Escalated to the CEO: custom SMTP
+or plan upgrade.
+
+**Resolved by PD-046 (custom SMTP, Resend), read back after configuration:**
+
+| Item | Value |
+|---|---|
+| SMTP | enabled — `smtp.resend.com:465`, user `resend`, password set (not printed) |
+| Sender | `TINDAK <auth@tindak.muhammedmunir.my>` — domain verified in Resend (DKIM and both SPF records), sender accepted by a live send test |
+| OTP length / expiry | 6 digits / 3600 s |
+| Magic Link subject + body | `Kod log masuk TINDAK`, body exactly the approved copy |
+| Confirm signup subject + body | `Kod log masuk TINDAK`, body exactly the approved copy |
+| Email send limit | raised from 2 to 30 per hour; verify limit 30 per hour |
+| Email sign-in / anonymous sign-in | on / off |
+
+Real OTP delivery and verification: pending, scenario 2 below.
+
+#### Live end-to-end (2026-09-15/16) — 12/12 PASS
+
+| # | Scenario | Expected | Result |
+|---|---|---|---|
+| 1 | Existing guest item after upgrade | present, "Pada peranti ini" | **PASS** (2026-09-15) — M5a item intact after v1 → v2, status "Pada peranti ini", Panggil and WhatsApp still offered |
+| 2 | Real OTP sign-in | code email arrives with approved copy; signed in | **PASS** — email from `auth@tindak.muhammedmunir.my` in ~10 s, inbox not spam; six digits accepted; cloud then **1 user, 0 memories, 0 entities** |
+| 3 | Migration prompt → Bukan Sekarang | guest rows unchanged, nothing in cloud | **PASS** — cloud still 0 memories; Settings offers "1 item pada peranti ini belum disync ke akaun" |
+| 4 | Tetapan → Sync ke Akaun → Sync | rows account-owned, synced, present in cloud | **PASS** — same id `5501dd7a…`, `created_at` 2026-09-14 kept, server-set `updated_at`, 1 entity `phone:+60198765432`; detail reads "Disimpan dalam akaun" |
+| 5 | Signed-in save | "Disimpan. Akan disync ke akaun anda."; synced | **PASS** — shared text saved and in the cloud with 2 entities, no manual sync |
+| 6 | Offline save, then online and resume | pending while offline, synced after | **PASS** — airplane mode: save succeeded and listed; Settings read "Tiada sambungan. Perubahan akan disync kemudian."; after reconnect and resume: "Semua perubahan telah disync." and the row reached the cloud |
+| 7 | Delete synced account item | cloud tombstone, local row gone | **PASS** — cloud `deleted_at` set, item gone from the device |
+| 8 | Pull to refresh after 7 | item does not come back | **PASS** — two refreshes, no resurrection |
+| 9 | Log Keluar while offline with a pending change | blocked with PD-041 dialog, nothing deleted | **PASS** — exact PD-041 title and body, [Batal] [Cuba Lagi]; Batal left the user signed in with every row intact |
+| 10 | Log Keluar with empty queue | account items leave the UI, guest items stay usable | **PASS** — Home back to the empty state, cloud untouched (2 live, 1 tombstone); a later guest save shows device-only with the PD-019 notice |
+| 11 | Sign in again with the same account | synced items return | **PASS** — after Bukan Sekarang: both live account items returned ("Disimpan dalam akaun"), the deleted one did not; the guest item stayed "Pada peranti ini" and unchanged in ownership; one unified list, no Local/Cloud tabs; cloud still 2 live, 1 tombstone, 1 user, 4 entities |
+| 12 | Tetapan open/close again on the live build | no close | **PASS** — 12 open/close cycles signed in, including 4 home/resume and 3 recents cycles; Settings opened every time, one process throughout, crash buffer empty, data unchanged |
+
+Cloud baseline before scenario 2, taken 2026-09-16 03:22 UTC: 0 users,
+0 memories, 0 entities — scenario 3 is judged against it. All device steps ran
+on the emulator against the live project; the CEO read each code from their own
+inbox and no code was shared.
+
 ---
 
 ## 10. Integration

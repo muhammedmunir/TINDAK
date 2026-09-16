@@ -9,25 +9,24 @@ part 'tindak_database.g.dart';
 /// The device database — the source of truth on this phone (ADR-014).
 ///
 /// Local SQLite through Drift (ADR-015). The schema is documented in
-/// docs/11_DATABASE.md section 3 and is the first persistent user-data schema
-/// in TINDAK, so it is built for M5b now even though M5b has not started:
+/// docs/11_DATABASE.md section 3:
 ///
-/// - client-generated UUIDv4 ids, so a row keeps its identity when it is later
+/// - client-generated UUIDv4 ids, so a row keeps its identity when it is
 ///   synced and nothing is ever re-keyed;
 /// - nullable ownership, so a guest row is structurally different from an
 ///   account row, and a database constraint stops a guest row claiming to be
 ///   synced;
-/// - a sync status that is always `local_only` in M5a;
-/// - `deleted_at` for a future sync tombstone, never shown to the user.
+/// - a sync status: `local_only` for guest rows, `pending` or `synced` for
+///   account rows (M5b);
+/// - `deleted_at` for a sync tombstone, never shown to the user.
 ///
-/// **No cloud behaviour exists here.** Nothing reads `owner_user_id` other than
-/// to keep it null, and nothing ever sets `sync_status` to anything but
-/// `local_only` in M5a.
+/// The database itself does no networking. The repository decides ownership
+/// at save; `SyncStore` is the only code that moves rows between sync states.
 ///
 /// Stored text is private. Drift's generated row classes print their fields in
 /// `toString`, so rows never cross into logging or UI directly: the repository
 /// maps them to domain types whose `toString` omits content.
-@DriftDatabase(tables: <Type>[Memories, MemoryEntities])
+@DriftDatabase(tables: <Type>[Memories, MemoryEntities, SyncMeta])
 class TindakDatabase extends _$TindakDatabase {
   TindakDatabase(super.executor);
 
@@ -51,20 +50,36 @@ class TindakDatabase extends _$TindakDatabase {
   /// be impossible to sync.
   static const int maxContentLength = 10000;
 
-  /// Version 1 is the M5a schema. Every change bumps this and adds an explicit
-  /// step to [migration]; a migration that has run on a real device is never
-  /// edited (docs/11_DATABASE.md section 6).
+  /// Schema history. Every change bumps this and adds an explicit step to
+  /// [migration]; a step that has run on a real device is never edited
+  /// (docs/11_DATABASE.md section 6).
+  ///
+  /// - 1 — M5a Local Memory.
+  /// - 2 — M5b: `memories.server_updated_at`, so the device knows whether the
+  ///   server has ever acknowledged a row
+  ///   (docs/14_M5B_RECONCILIATION.md section 2.1); and the `sync_meta`
+  ///   table for the per-account pull cursor.
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) => m.createAll(),
     onUpgrade: (m, from, to) async {
-      // No upgrades exist yet. An unknown jump is refused rather than guessed
-      // at, because guessing with a user's only copy of their data is the one
-      // thing a migration must never do.
-      throw StateError('No migration path from schema $from to $to');
+      // Only known steps are run. An unknown jump — including a downgrade from
+      // a newer build — is refused rather than guessed at, because guessing
+      // with a user's only copy of their data is the one thing a migration must
+      // never do.
+      if (from < 1 || to > 2 || from >= to) {
+        throw StateError('No migration path from schema $from to $to');
+      }
+      if (from < 2) {
+        // ADD COLUMN, not a table rebuild: existing rows keep every value and
+        // every CHECK, and the new column is NULL — correctly meaning "the
+        // server has never seen this row", which is true of every M5a row.
+        await m.addColumn(memories, memories.serverUpdatedAt);
+        await m.createTable(syncMeta);
+      }
     },
     beforeOpen: (details) async {
       // SQLite leaves foreign keys off unless asked. Without this, deleting a
@@ -98,15 +113,24 @@ class Memories extends Table {
   IntColumn get createdAt => integer().named('created_at')();
   IntColumn get updatedAt => integer().named('updated_at')();
 
-  /// Reserved for a future sync tombstone (PD-021). M5a deletes rows outright
-  /// and never sets this; every read ignores rows where it is set.
+  /// A sync tombstone (PD-021): set when an account item is deleted, removed
+  /// once the cloud has the deletion. Guest items are deleted outright. Every
+  /// read ignores rows where it is set.
   IntColumn get deletedAt => integer().named('deleted_at').nullable()();
 
-  /// Null means guest-owned. Set only by M5b sign-in and migration.
+  /// Null means guest-owned. Set by a signed-in save, a pull, or the explicit
+  /// guest migration (PD-044) — never by sign-in alone.
   TextColumn get ownerUserId => text().named('owner_user_id').nullable()();
 
-  /// `local_only` in M5a, always.
+  /// `local_only` (guest), `pending` (account, not yet acknowledged) or
+  /// `synced`.
   TextColumn get syncStatus => text().named('sync_status')();
+
+  /// The server's `updated_at` from the last successful push or pull, epoch ms
+  /// UTC. NULL means the server has never acknowledged this row — so deleting
+  /// it can be a local hard delete, with no tombstone to send (schema v2).
+  IntColumn get serverUpdatedAt =>
+      integer().named('server_updated_at').nullable()();
 
   @override
   Set<Column<Object>> get primaryKey => <Column<Object>>{id};
@@ -170,4 +194,21 @@ class MemoryEntities extends Table {
     'CHECK (confidence >= 0 AND confidence <= 1)',
     'CHECK (start_offset >= 0 AND end_offset > start_offset)',
   ];
+}
+
+/// Small key/value state for sync, one row per key (schema v2).
+///
+/// Keys are scoped by account, e.g. `pull_cursor:<user id>`, so signing in as a
+/// different account never reuses another account's cursor. Cleared for an
+/// account when it signs out.
+@DataClassName('SyncMetaRow')
+class SyncMeta extends Table {
+  @override
+  String get tableName => 'sync_meta';
+
+  TextColumn get key => text()();
+  TextColumn get value => text()();
+
+  @override
+  Set<Column<Object>> get primaryKey => <Column<Object>>{key};
 }

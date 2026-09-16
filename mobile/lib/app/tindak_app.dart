@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tindak/app/routes.dart';
 import 'package:tindak/app/theme.dart';
 import 'package:tindak/features/actions/widgets/entity_row.dart' as actions;
+import 'package:tindak/features/auth/auth_providers.dart';
+import 'package:tindak/features/auth/sign_in_screen.dart';
 import 'package:tindak/features/home/home_screen.dart';
 import 'package:tindak/features/intake/incoming_text.dart';
 import 'package:tindak/features/intake/intake_controller.dart';
@@ -13,6 +15,8 @@ import 'package:tindak/features/intake/intake_result_screen.dart';
 import 'package:tindak/features/intake/intake_understanding.dart';
 import 'package:tindak/features/memory/memory_detail_screen.dart';
 import 'package:tindak/features/memory/memory_providers.dart';
+import 'package:tindak/features/settings/settings_screen.dart';
+import 'package:tindak/features/sync/sync_providers.dart';
 import 'package:tindak/features/understanding/model/understanding_result.dart';
 
 /// The application shell.
@@ -24,6 +28,8 @@ class TindakApp extends ConsumerStatefulWidget {
 }
 
 class _TindakAppState extends ConsumerState<TindakApp> {
+  late final AppLifecycleListener _lifecycle;
+
   @override
   void initState() {
     super.initState();
@@ -34,18 +40,47 @@ class _TindakAppState extends ConsumerState<TindakApp> {
     // This reads no clipboard and saves nothing, and nothing on a lifecycle
     // path may (ADR-004, PD-003).
     unawaited(ref.read(intakeControllerProvider.notifier).start());
+
+    // Resume is a sync trigger (docs/10_ARCHITECTURE.md section 8.1). Sync
+    // moves only changes the user already made; it reads no clipboard and
+    // saves nothing new.
+    _lifecycle = AppLifecycleListener(
+      onResume: () =>
+          unawaited(ref.read(syncControllerProvider.notifier).requestSync()),
+    );
+  }
+
+  @override
+  void dispose() {
+    _lifecycle.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    // Keeps the sync controller alive, so a session restored at launch or a
+    // new sign-in starts a sync.
+    ref.watch(syncControllerProvider);
+
     return MaterialApp(
       title: 'TINDAK',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       initialRoute: Routes.home,
-      routes: <String, WidgetBuilder>{Routes.home: (_) => const IntakeGate()},
+      routes: <String, WidgetBuilder>{
+        Routes.home: (_) => const IntakeGate(),
+        Routes.settings: (_) => const SettingsScreen(),
+      },
       onGenerateRoute: (settings) {
+        // Typed, because the caller awaits a bool. A route from the table
+        // above is Route<dynamic>, and pushNamed<bool> on it throws.
+        if (settings.name == Routes.signIn) {
+          return MaterialPageRoute<bool>(
+            settings: settings,
+            builder: (_) => const SignInScreen(),
+          );
+        }
         final id = settings.arguments;
         if (settings.name == Routes.memoryDetail && id is String) {
           return MaterialPageRoute<void>(
@@ -73,6 +108,10 @@ class IntakeGate extends ConsumerWidget {
       actions.actionUnavailableMessage;
 
   static const String savedMessage = 'Disimpan pada peranti ini.';
+
+  /// Signed in: saved on the device first, then synced (PD-042).
+  static const String savedToAccountMessage =
+      'Disimpan. Akan disync ke akaun anda.';
   static const String saveFailedMessage = 'Tidak dapat menyimpan. Cuba lagi.';
 
   /// PD-039. Says what the limit is, so the user knows what to change.
@@ -119,6 +158,7 @@ class IntakeGate extends ConsumerWidget {
     UnderstandingResult understanding,
   ) async {
     final messenger = ScaffoldMessenger.of(context);
+    final signedIn = ref.read(currentAccountProvider) != null;
     final outcome = await ref
         .read(memorySaverProvider)
         .save(incoming: incoming, understanding: understanding);
@@ -129,7 +169,14 @@ class IntakeGate extends ConsumerWidget {
       case SaveOutcome.saved:
         messenger
           ..hideCurrentSnackBar()
-          ..showSnackBar(const SnackBar(content: Text(savedMessage)));
+          ..showSnackBar(
+            SnackBar(
+              content: Text(signedIn ? savedToAccountMessage : savedMessage),
+            ),
+          );
+        // After the local commit, never before, and never awaited: the save
+        // has already succeeded whatever the network does (PD-042).
+        unawaited(ref.read(syncControllerProvider.notifier).requestSync());
       case SaveOutcome.tooLong:
         messenger
           ..hideCurrentSnackBar()

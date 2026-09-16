@@ -424,18 +424,122 @@ void main() {
       );
     });
 
-    test('a synced row is refused rather than silently hard deleted', () async {
-      // M5a cannot create one. If one ever exists, hard deleting it would let
-      // a later sync resurrect it, so it waits for M5b's tombstone logic.
-      final id = await save(shared('x'));
+  });
+
+  group('accounts — M5b', () {
+    String? signedIn;
+    late DriftMemoryRepository accountRepo;
+
+    setUp(() {
+      signedIn = null;
+      accountRepo = DriftMemoryRepository(
+        db,
+        clock: clock,
+        currentUserId: () => signedIn,
+      );
+    });
+
+    Future<String> saveAs(String? user, String text) async {
+      signedIn = user;
+      final result = await accountRepo.save(
+        incoming: shared(text),
+        understanding: engine.understand(text),
+      );
+      return result.valueOrNull!;
+    }
+
+    Future<MemoryRow> rowOf(String id) =>
+        (db.select(db.memories)..where((m) => m.id.equals(id))).getSingle();
+
+    test('a guest save stays device-only', () async {
+      final id = await saveAs(null, 'guest');
+
+      final row = await rowOf(id);
+      expect(row.ownerUserId, isNull);
+      expect(row.syncStatus, 'local_only');
+      expect((await accountRepo.findById(id)).valueOrNull!.storage,
+          MemoryStorage.deviceOnly);
+    });
+
+    test('a signed-in save belongs to the account and waits for sync '
+        '(PD-042)', () async {
+      final id = await saveAs('user-a', 'account');
+
+      final row = await rowOf(id);
+      expect(row.ownerUserId, 'user-a');
+      expect(row.syncStatus, 'pending');
+      expect(row.serverUpdatedAt, isNull);
+      expect((await accountRepo.findById(id)).valueOrNull!.storage,
+          MemoryStorage.pendingSync);
+    });
+
+    test('signing in shows guest items and the account items together, '
+        'in one list (PD-020)', () async {
+      final guest = await saveAs(null, 'guest item');
+      final mine = await saveAs('user-a', 'my item');
+      final theirs = await saveAs('user-b', 'their item');
+
+      signedIn = 'user-a';
+      expect((await accountRepo.watch().first).map((r) => r.id).toSet(),
+          <String>{guest, mine});
+      expect((await accountRepo.findById(theirs)).failureOrNull,
+          isA<NotFoundFailure>());
+
+      signedIn = null;
+      expect((await accountRepo.watch().first).map((r) => r.id), <String>[
+        guest,
+      ]);
+    });
+
+    test('search never reaches another account', () async {
+      await saveAs('user-b', 'rahsia orang lain');
+
+      signedIn = 'user-a';
+      expect(await accountRepo.watch(query: 'rahsia').first, isEmpty);
+    });
+
+    test('a guest item is deleted outright', () async {
+      final id = await saveAs(null, 'guest');
+
+      expect((await accountRepo.delete(id)).isOk, isTrue);
+      expect(await db.select(db.memories).get(), isEmpty);
+    });
+
+    test('an account item becomes a hidden, pending tombstone (PD-021)',
+        () async {
+      final id = await saveAs('user-a', 'account 012-3456789');
       await db.customStatement(
-        "UPDATE memories SET owner_user_id = 'u', sync_status = 'synced' "
+        "UPDATE memories SET sync_status = 'synced', server_updated_at = 5 "
         'WHERE id = ?',
         <Object?>[id],
       );
 
-      expect((await repo.delete(id)).isErr, isTrue);
-      expect(await db.select(db.memories).get(), hasLength(1));
+      expect((await accountRepo.delete(id)).isOk, isTrue);
+
+      final row = await rowOf(id);
+      expect(row.deletedAt, isNotNull);
+      expect(row.syncStatus, 'pending');
+      expect(await accountRepo.watch().first, isEmpty);
+      expect(await accountRepo.watch(query: '3456789').first, isEmpty);
+      expect((await accountRepo.findById(id)).failureOrNull,
+          isA<NotFoundFailure>());
+    });
+
+    test('an account item not yet pushed is still tombstoned, because its '
+        'push may be in flight', () async {
+      final id = await saveAs('user-a', 'offline save');
+
+      expect((await accountRepo.delete(id)).isOk, isTrue);
+      expect((await rowOf(id)).deletedAt, isNotNull);
+    });
+
+    test('another account\'s item cannot be deleted', () async {
+      final id = await saveAs('user-b', 'theirs');
+
+      signedIn = 'user-a';
+      expect((await accountRepo.delete(id)).failureOrNull,
+          isA<NotFoundFailure>());
+      expect((await rowOf(id)).deletedAt, isNull);
     });
   });
 

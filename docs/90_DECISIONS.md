@@ -2,19 +2,19 @@
 
 **Owner:** Shared governance
 **Status:** ARCHITECTURE LOCKED — 2026-09-10
-ADR-001…ADR-030 Accepted · PD-001…PD-040 Accepted
+ADR-001…ADR-032 Accepted · PD-001…PD-046 Accepted
 
 Three registers, all binding:
 
 - **ADR-001…ADR-012** — founding decisions from the master plan.
-- **PD-001…PD-040** — product decisions. PD-001…PD-022 locked with Product Pack
+- **PD-001…PD-045** — product decisions. PD-001…PD-022 locked with Product Pack
   V1; PD-023…PD-029 from the Product Direction review of the Technical Pack;
-  PD-030…PD-031 at Architecture Lock; PD-032…PD-040 from milestone reviews.
+  PD-030…PD-031 at Architecture Lock; PD-032…PD-045 from milestone reviews.
 - **ADR-013…ADR-028** — architecture decisions from the Technical Pack.
   Product Direction passed them and the CEO locked them on 2026-09-10. They are
   binding for V1 unless superseded by a later CEO-approved decision.
-- **ADR-029…ADR-030** — amendments accepted during implementation (ADR-003 at
-  M2, ADR-015's search mechanism at M5a).
+- **ADR-029…ADR-031** — amendments accepted during implementation (ADR-003 at
+  M2, ADR-015's search mechanism at M5a, ADR-022's sign-out at M5b).
 
 An accepted decision is binding until the CEO explicitly changes it (AI Rule
 14). Decisions are appended, never edited in place; to reverse one, add a new
@@ -270,6 +270,61 @@ progress, so the user can see a second tap is not accepted.
 All M5a copy as submitted, with one change: delete failure reads **"Item tidak
 dapat dipadam. Cuba lagi."**, so a recoverable failure names the next step.
 
+## PD-041…PD-045 — added by the M5b reconciliation review
+
+### PD-041 — Sign-out is fail-safe
+TINDAK must not complete sign-out while account-owned changes remain
+unacknowledged by the cloud. Sign-out attempts a sync first. If it cannot
+complete, the user stays signed in and sees:
+
+> **Belum dapat log keluar**
+> Ada perubahan yang belum disimpan ke cloud. Sambungkan internet dan cuba lagi
+> supaya data anda tidak hilang.
+
+**[Cuba Lagi] [Batal]**. There is **no "sign out anyway"** in V1. Deleting unsynced
+data to honour PD-017 would trade one promise for silent data loss; blocking
+keeps both.
+
+### PD-042 — Saves while signed in sync automatically, after explicit Save
+Pressing Simpan while signed in commits locally first and makes the memory
+eligible for automatic cloud sync. This is transport after the user's
+decision, not auto-save: the user still chooses what is kept (PD-003). A network
+failure must never make the local Save fail; the memory waits as pending.
+
+### PD-043 — Minimal Settings for Account and Cloud Sync
+A minimal Settings screen holds exactly: **Akaun** (sign in, or the signed-in
+email and sign out) and **Cloud Sync** (status, Sync Sekarang when relevant, and
+resuming a deferred guest migration). Not a dashboard. Memory and search stay
+unified — no Local/Cloud tabs.
+
+### PD-044 — Guest migration needs explicit confirmation; declining is a no-op
+After sign-in, when device-local guest memories exist:
+
+> **Sync memori ke akaun?**
+> Anda mempunyai **{count} item** yang disimpan pada peranti ini. Sync ke akaun
+> supaya item ini boleh tersedia apabila anda menggunakan TINDAK dengan akaun
+> anda.
+
+**[Bukan Sekarang] [Sync]**. The count is dynamic. No prompt when the count is
+zero. **Bukan Sekarang** performs no ownership change, no upload and no
+background migration of guest rows.
+
+### PD-045 — Shared devices: explicit migration assigns guest items to the signed-in account
+TINDAK cannot know which person created a guest memory before any identity
+existed, and does not invent one. Whoever is signed in and explicitly presses
+Sync takes the device's guest items into that account. The prompt says "item
+yang disimpan pada peranti ini", never "memori anda", so the consequence is
+visible.
+
+### M5b operating notes (Product Direction)
+- One Supabase project is accepted for Founder Alpha. Security scripts that
+  create and clean up test users may run there now, while it holds no real
+  users. **Before closed beta, development and testing are separated from
+  production.**
+- The publishable key may ship in the client. Service-role keys, database
+  credentials and private secrets never enter Flutter or Git history. Client
+  values reach the app through build-time configuration, not hardcoded source.
+
 ---
 
 # Part 3 — Architecture Decisions (Accepted at Architecture Lock, 2026-09-10)
@@ -479,6 +534,25 @@ from.
 
 **Status:** Accepted — CEO and Product Direction, 2026-09-10.
 
+## ADR-031 — Amends ADR-022: sign-out is blocked until the account is safe to clear
+**Decision:** ADR-022 deleted every account-owned row on sign-out on the
+assumption that "the cloud copy is intact". That is false for a row still
+pending — saved offline, or deleted offline. Sign-out now:
+
+```text
+account rows still pending?
+  no  ─► purge account rows ─► clear sync state ─► end session
+  yes ─► sync ─► still pending? ─► stay signed in, explain (PD-041)
+                    │
+                    no ─► purge ─► clear ─► end session
+```
+
+Local rows are purged **before** the session ends. If ending the session failed
+after the purge, the user is left signed in with nothing to leak; the reverse
+order could leave account data readable after sign-out (PD-017).
+
+**Status:** Accepted — Product Direction M5b review (PD-041).
+
 ## ADR-030 — Amends ADR-015: Memory search uses LIKE, not FTS5
 **Decision:** Local Memory search matches original text with
 `LIKE %query%`, and entity values through a derived, lowercased
@@ -500,6 +574,111 @@ local, deterministic and non-AI (PD-004).
 **Detail:** `11_DATABASE.md` §3.1.
 **Status:** Accepted — Product Direction and CEO, M5a review. Amends ADR-015's
 search mechanism only; Drift over SQLite stands. See PD-038.
+
+## ADR-032 — Sync implementation details (M5b)
+**Decision:** Three technical refinements of ADR-019 and `13_API.md` §2 found
+while building sync. None changes product behaviour.
+
+1. **Push goes through `public.push_memory()`, not a table upsert.** It inserts
+   a memory and its entities in one transaction, runs `SECURITY INVOKER` under
+   the caller's RLS, takes `user_id` from `auth.uid()` only, and is idempotent.
+   Two separate inserts would let another device pull a memory before its
+   entities exist, and since memories are immutable it would never get them.
+2. **Deleting an account item always leaves a tombstone,** even one the server
+   has never acknowledged. Refines reconciliation §2.1: a push of that item may
+   already be in flight, and a local hard delete would let the next pull bring
+   it back. Sync never uploads the content of a tombstoned item; guest items
+   are still deleted outright.
+3. **Full re-pull after 80 days without a pull,** inside the 90-day purge window
+   (PD-028), so the reset always happens before a tombstone can be purged.
+
+**Detail:** `supabase/migrations/20260915000003_push_memory.sql`,
+`mobile/lib/features/sync/`.
+**Conditions (Product Direction):** `push_memory()` stays authenticated,
+ownership-bound, transactional and unable to bypass RLS or immutability — it is
+`SECURITY INVOKER` with a locked search path, asserted by S-1 in
+`rls_memories.sql`. A tombstone carries no deleted content. The 80-day
+reconciliation respects pending local changes and deletions and never touches
+guest memories.
+**Status:** Accepted — Product Direction M5b review (conditional pass).
+
+### M5b known gaps accepted by Product Direction
+- **Scheduled 90-day tombstone purge** — not an M5b blocker; must exist before
+  closed beta.
+- **Permanently rejected queued change** — accepted for alpha. Sync never
+  retries in a loop (it runs only on its triggers); the change stays queued,
+  Settings shows the failure, and the failure code is logged without content.
+  Never silently deleted to allow sign-out.
+- **Expired session** — account rows stay on the device but are unreadable
+  through list, search and detail until the same account signs in again
+  (PD-017). Guest memories stay usable.
+
+### M5b copy baseline (Product Direction)
+Sign-in, OTP, Settings, save and status copy as listed in the M5b review, and
+the OTP email in `mobile/README.md`. Supabase errors are never shown to users.
+Also approved: "Masukkan e-mel anda. Kami akan menghantar kod 6 digit.",
+"Sahkan", "Hantar semula kod", "Tukar e-mel", "Kod baharu telah dihantar.",
+"E-mel tidak sah.", "Terlalu banyak cubaan. Tunggu sebentar dan cuba lagi."
+
+### M5b database access (Product Direction and CEO, 2026-09-15)
+Direct production database access for Claude Code is **not approved**. The
+original arrangement stands: Claude writes SQL, the CEO runs it in the Supabase
+SQL Editor and returns only the result grid. A database password that entered a
+chat transcript is reset immediately. No permission rule for Postgres is added.
+**Status:** Superseded by the CEO override below.
+
+### PD-046 — Authentication email goes through custom SMTP; Resend first
+TINDAK V1 uses custom SMTP for Supabase authentication email. Resend is the
+initial provider. Supabase's default sender is unsuitable: this Free-tier project
+cannot customise authentication templates with it, and its sending limit is
+unsuitable for testing and production.
+
+Supabase Auth stays the identity system; Resend is email transport only. No
+second authentication system, user store or application email subsystem.
+ADR-020 stands: email OTP, exactly six digits, anonymous sign-in disabled.
+Authentication email only in M5b — no marketing, newsletter or notification
+email. Supabase is not upgraded solely for email. Credentials stay local and
+git-ignored, never in Flutter, Git or logs.
+
+**Before inviting anyone other than the CEO:** the sending domain must be
+verified in Resend (SPF, DKIM, DMARC) and the sender switched from Resend's
+test address, which delivers only to the Resend account owner.
+
+### CEO OVERRIDE — TINDAK Supabase project administration (2026-09-15)
+**Decision:** Claude Code may administer the **TINDAK Supabase project** for
+development, deployment, migrations, authentication configuration, RLS and
+security verification, database functions and M5b validation, using the
+Supabase CLI, PostgreSQL tooling and the Management API where appropriate.
+Supersedes the entry above. Product Direction accepts the override.
+
+**Credentials**
+- The database password exposed in a chat transcript is reset before use.
+- Credentials never enter chat, Git, logs, test output or Flutter. They live
+  only in `supabase/.env`, confirmed git-ignored with `git check-ignore` before
+  use. `mobile/.env.client` holds client-safe values only.
+- Least privilege where Supabase supports it: the project-scoped database
+  connection first. An account-wide personal access token only when a task
+  cannot be done otherwise.
+
+**Safeguards before the first write:** verify the project ref is TINDAK's;
+confirm every credential file is ignored; read-only connectivity and
+configuration checks; review the pending SQL; touch no unrelated resource.
+
+**Always requires CEO confirmation first:** anything destructive or
+irreversible outside the approved migrations — dropping tables, deleting
+production data or users, resetting the database, disabling RLS, rotating
+credentials, billing, deleting the project. RLS and security controls are never
+weakened to make a test pass.
+
+**Scope:** M5b only. Security gate 32/32 PASS, then the 12 live scenarios, then
+Product Direction final review. No M6.
+**Status:** Accepted — CEO, with Product Direction acknowledgement.
+
+**CEO waiver (2026-09-15):** the CEO chose not to reset the database password
+that appeared in a chat transcript, and asked Claude to perform all Supabase
+steps. Risk explained and accepted by the CEO. Claude placed the connection in
+the git-ignored `supabase/.env`; the value is never printed or committed.
+Revisit before closed beta, when production is separated from development.
 
 ---
 

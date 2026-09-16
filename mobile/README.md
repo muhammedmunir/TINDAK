@@ -42,8 +42,41 @@ Both are public, RLS-scoped values. **No secret key belongs in this project** �
 Gemini and reputation-provider keys live in Supabase Edge Function config and
 are reached through an Edge Function (docs/12_SECURITY.md §6, AI Rule 9).
 
-Running with no `--dart-define` is a supported state. TINDAK is guest-first and
-local-first: the core loop needs no cloud configuration.
+For local runs, copy `mobile/.env.client.example` to `mobile/.env.client`
+(git-ignored), fill in the two values, and pass the file:
+
+```bash
+flutter run --dart-define-from-file=.env.client
+```
+
+A separate client file, not the root `.env`, on purpose: every key in the file
+passed to the build becomes a compile-time define, so a server secret sitting
+in the same file would be one typo away from the APK.
+
+Never paste the values into source, a committed file, an issue or a PR — the
+repository is public.
+
+Running with no cloud configuration is a supported state. TINDAK is guest-first
+and local-first: the core loop needs no cloud, and Settings says Cloud Sync is
+unavailable in that build.
+
+### Supabase email template (M5b)
+
+Sign-in is a six-digit code typed in the app (ADR-020). Supabase's default
+"Magic Link" email sends a link, not a code. In the Dashboard → Authentication →
+Email Templates, set **Magic Link** (and **Confirm signup**, used for a first
+sign-in) to the copy approved by Product Direction:
+
+Subject: `Kod log masuk TINDAK`
+
+```html
+<h2>Kod log masuk TINDAK</h2>
+<p>Kod log masuk anda ialah <strong>{{ .Token }}</strong>.</p>
+<p>Masukkan kod ini dalam TINDAK untuk meneruskan.</p>
+<p>Jika anda tidak meminta kod ini, abaikan e-mel ini.</p>
+```
+
+No `{{ .ConfirmationURL }}` and no marketing. The code is the only way in.
 
 ## Structure
 

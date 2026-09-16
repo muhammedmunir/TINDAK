@@ -106,6 +106,17 @@ class $MemoriesTable extends Memories
     type: DriftSqlType.string,
     requiredDuringInsert: true,
   );
+  static const VerificationMeta _serverUpdatedAtMeta = const VerificationMeta(
+    'serverUpdatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> serverUpdatedAt = GeneratedColumn<int>(
+    'server_updated_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -117,6 +128,7 @@ class $MemoriesTable extends Memories
     deletedAt,
     ownerUserId,
     syncStatus,
+    serverUpdatedAt,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -199,6 +211,15 @@ class $MemoriesTable extends Memories
     } else if (isInserting) {
       context.missing(_syncStatusMeta);
     }
+    if (data.containsKey('server_updated_at')) {
+      context.handle(
+        _serverUpdatedAtMeta,
+        serverUpdatedAt.isAcceptableOrUnknown(
+          data['server_updated_at']!,
+          _serverUpdatedAtMeta,
+        ),
+      );
+    }
     return context;
   }
 
@@ -244,6 +265,10 @@ class $MemoriesTable extends Memories
         DriftSqlType.string,
         data['${effectivePrefix}sync_status'],
       )!,
+      serverUpdatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}server_updated_at'],
+      ),
     );
   }
 
@@ -280,6 +305,11 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
 
   /// `local_only` in M5a, always.
   final String syncStatus;
+
+  /// The server's `updated_at` from the last successful push or pull, epoch ms
+  /// UTC. NULL means the server has never acknowledged this row — so deleting
+  /// it can be a local hard delete, with no tombstone to send (schema v2).
+  final int? serverUpdatedAt;
   const MemoryRow({
     required this.id,
     required this.content,
@@ -290,6 +320,7 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
     this.deletedAt,
     this.ownerUserId,
     required this.syncStatus,
+    this.serverUpdatedAt,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -309,6 +340,9 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
       map['owner_user_id'] = Variable<String>(ownerUserId);
     }
     map['sync_status'] = Variable<String>(syncStatus);
+    if (!nullToAbsent || serverUpdatedAt != null) {
+      map['server_updated_at'] = Variable<int>(serverUpdatedAt);
+    }
     return map;
   }
 
@@ -329,6 +363,9 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
           ? const Value.absent()
           : Value(ownerUserId),
       syncStatus: Value(syncStatus),
+      serverUpdatedAt: serverUpdatedAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(serverUpdatedAt),
     );
   }
 
@@ -347,6 +384,7 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
       deletedAt: serializer.fromJson<int?>(json['deletedAt']),
       ownerUserId: serializer.fromJson<String?>(json['ownerUserId']),
       syncStatus: serializer.fromJson<String>(json['syncStatus']),
+      serverUpdatedAt: serializer.fromJson<int?>(json['serverUpdatedAt']),
     );
   }
   @override
@@ -362,6 +400,7 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
       'deletedAt': serializer.toJson<int?>(deletedAt),
       'ownerUserId': serializer.toJson<String?>(ownerUserId),
       'syncStatus': serializer.toJson<String>(syncStatus),
+      'serverUpdatedAt': serializer.toJson<int?>(serverUpdatedAt),
     };
   }
 
@@ -375,6 +414,7 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
     Value<int?> deletedAt = const Value.absent(),
     Value<String?> ownerUserId = const Value.absent(),
     String? syncStatus,
+    Value<int?> serverUpdatedAt = const Value.absent(),
   }) => MemoryRow(
     id: id ?? this.id,
     content: content ?? this.content,
@@ -385,6 +425,9 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
     deletedAt: deletedAt.present ? deletedAt.value : this.deletedAt,
     ownerUserId: ownerUserId.present ? ownerUserId.value : this.ownerUserId,
     syncStatus: syncStatus ?? this.syncStatus,
+    serverUpdatedAt: serverUpdatedAt.present
+        ? serverUpdatedAt.value
+        : this.serverUpdatedAt,
   );
   MemoryRow copyWithCompanion(MemoriesCompanion data) {
     return MemoryRow(
@@ -403,6 +446,9 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
       syncStatus: data.syncStatus.present
           ? data.syncStatus.value
           : this.syncStatus,
+      serverUpdatedAt: data.serverUpdatedAt.present
+          ? data.serverUpdatedAt.value
+          : this.serverUpdatedAt,
     );
   }
 
@@ -417,7 +463,8 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
           ..write('updatedAt: $updatedAt, ')
           ..write('deletedAt: $deletedAt, ')
           ..write('ownerUserId: $ownerUserId, ')
-          ..write('syncStatus: $syncStatus')
+          ..write('syncStatus: $syncStatus, ')
+          ..write('serverUpdatedAt: $serverUpdatedAt')
           ..write(')'))
         .toString();
   }
@@ -433,6 +480,7 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
     deletedAt,
     ownerUserId,
     syncStatus,
+    serverUpdatedAt,
   );
   @override
   bool operator ==(Object other) =>
@@ -446,7 +494,8 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
           other.updatedAt == this.updatedAt &&
           other.deletedAt == this.deletedAt &&
           other.ownerUserId == this.ownerUserId &&
-          other.syncStatus == this.syncStatus);
+          other.syncStatus == this.syncStatus &&
+          other.serverUpdatedAt == this.serverUpdatedAt);
 }
 
 class MemoriesCompanion extends UpdateCompanion<MemoryRow> {
@@ -459,6 +508,7 @@ class MemoriesCompanion extends UpdateCompanion<MemoryRow> {
   final Value<int?> deletedAt;
   final Value<String?> ownerUserId;
   final Value<String> syncStatus;
+  final Value<int?> serverUpdatedAt;
   final Value<int> rowid;
   const MemoriesCompanion({
     this.id = const Value.absent(),
@@ -470,6 +520,7 @@ class MemoriesCompanion extends UpdateCompanion<MemoryRow> {
     this.deletedAt = const Value.absent(),
     this.ownerUserId = const Value.absent(),
     this.syncStatus = const Value.absent(),
+    this.serverUpdatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   MemoriesCompanion.insert({
@@ -482,6 +533,7 @@ class MemoriesCompanion extends UpdateCompanion<MemoryRow> {
     this.deletedAt = const Value.absent(),
     this.ownerUserId = const Value.absent(),
     required String syncStatus,
+    this.serverUpdatedAt = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : id = Value(id),
        content = Value(content),
@@ -499,6 +551,7 @@ class MemoriesCompanion extends UpdateCompanion<MemoryRow> {
     Expression<int>? deletedAt,
     Expression<String>? ownerUserId,
     Expression<String>? syncStatus,
+    Expression<int>? serverUpdatedAt,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -511,6 +564,7 @@ class MemoriesCompanion extends UpdateCompanion<MemoryRow> {
       if (deletedAt != null) 'deleted_at': deletedAt,
       if (ownerUserId != null) 'owner_user_id': ownerUserId,
       if (syncStatus != null) 'sync_status': syncStatus,
+      if (serverUpdatedAt != null) 'server_updated_at': serverUpdatedAt,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -525,6 +579,7 @@ class MemoriesCompanion extends UpdateCompanion<MemoryRow> {
     Value<int?>? deletedAt,
     Value<String?>? ownerUserId,
     Value<String>? syncStatus,
+    Value<int?>? serverUpdatedAt,
     Value<int>? rowid,
   }) {
     return MemoriesCompanion(
@@ -537,6 +592,7 @@ class MemoriesCompanion extends UpdateCompanion<MemoryRow> {
       deletedAt: deletedAt ?? this.deletedAt,
       ownerUserId: ownerUserId ?? this.ownerUserId,
       syncStatus: syncStatus ?? this.syncStatus,
+      serverUpdatedAt: serverUpdatedAt ?? this.serverUpdatedAt,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -571,6 +627,9 @@ class MemoriesCompanion extends UpdateCompanion<MemoryRow> {
     if (syncStatus.present) {
       map['sync_status'] = Variable<String>(syncStatus.value);
     }
+    if (serverUpdatedAt.present) {
+      map['server_updated_at'] = Variable<int>(serverUpdatedAt.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -589,6 +648,7 @@ class MemoriesCompanion extends UpdateCompanion<MemoryRow> {
           ..write('deletedAt: $deletedAt, ')
           ..write('ownerUserId: $ownerUserId, ')
           ..write('syncStatus: $syncStatus, ')
+          ..write('serverUpdatedAt: $serverUpdatedAt, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -1232,11 +1292,220 @@ class MemoryEntitiesCompanion extends UpdateCompanion<MemoryEntityRow> {
   }
 }
 
+class $SyncMetaTable extends SyncMeta
+    with TableInfo<$SyncMetaTable, SyncMetaRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SyncMetaTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+    'key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _valueMeta = const VerificationMeta('value');
+  @override
+  late final GeneratedColumn<String> value = GeneratedColumn<String>(
+    'value',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [key, value];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sync_meta';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SyncMetaRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('key')) {
+      context.handle(
+        _keyMeta,
+        key.isAcceptableOrUnknown(data['key']!, _keyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('value')) {
+      context.handle(
+        _valueMeta,
+        value.isAcceptableOrUnknown(data['value']!, _valueMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_valueMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {key};
+  @override
+  SyncMetaRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SyncMetaRow(
+      key: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key'],
+      )!,
+      value: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}value'],
+      )!,
+    );
+  }
+
+  @override
+  $SyncMetaTable createAlias(String alias) {
+    return $SyncMetaTable(attachedDatabase, alias);
+  }
+}
+
+class SyncMetaRow extends DataClass implements Insertable<SyncMetaRow> {
+  final String key;
+  final String value;
+  const SyncMetaRow({required this.key, required this.value});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key'] = Variable<String>(key);
+    map['value'] = Variable<String>(value);
+    return map;
+  }
+
+  SyncMetaCompanion toCompanion(bool nullToAbsent) {
+    return SyncMetaCompanion(key: Value(key), value: Value(value));
+  }
+
+  factory SyncMetaRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SyncMetaRow(
+      key: serializer.fromJson<String>(json['key']),
+      value: serializer.fromJson<String>(json['value']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'key': serializer.toJson<String>(key),
+      'value': serializer.toJson<String>(value),
+    };
+  }
+
+  SyncMetaRow copyWith({String? key, String? value}) =>
+      SyncMetaRow(key: key ?? this.key, value: value ?? this.value);
+  SyncMetaRow copyWithCompanion(SyncMetaCompanion data) {
+    return SyncMetaRow(
+      key: data.key.present ? data.key.value : this.key,
+      value: data.value.present ? data.value.value : this.value,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncMetaRow(')
+          ..write('key: $key, ')
+          ..write('value: $value')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(key, value);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SyncMetaRow &&
+          other.key == this.key &&
+          other.value == this.value);
+}
+
+class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
+  final Value<String> key;
+  final Value<String> value;
+  final Value<int> rowid;
+  const SyncMetaCompanion({
+    this.key = const Value.absent(),
+    this.value = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SyncMetaCompanion.insert({
+    required String key,
+    required String value,
+    this.rowid = const Value.absent(),
+  }) : key = Value(key),
+       value = Value(value);
+  static Insertable<SyncMetaRow> custom({
+    Expression<String>? key,
+    Expression<String>? value,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (key != null) 'key': key,
+      if (value != null) 'value': value,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SyncMetaCompanion copyWith({
+    Value<String>? key,
+    Value<String>? value,
+    Value<int>? rowid,
+  }) {
+    return SyncMetaCompanion(
+      key: key ?? this.key,
+      value: value ?? this.value,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (value.present) {
+      map['value'] = Variable<String>(value.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncMetaCompanion(')
+          ..write('key: $key, ')
+          ..write('value: $value, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$TindakDatabase extends GeneratedDatabase {
   _$TindakDatabase(QueryExecutor e) : super(e);
   $TindakDatabaseManager get managers => $TindakDatabaseManager(this);
   late final $MemoriesTable memories = $MemoriesTable(this);
   late final $MemoryEntitiesTable memoryEntities = $MemoryEntitiesTable(this);
+  late final $SyncMetaTable syncMeta = $SyncMetaTable(this);
   late final Index memoriesVisibleCreatedIdx = Index(
     'memories_visible_created_idx',
     'CREATE INDEX memories_visible_created_idx ON memories (deleted_at, created_at)',
@@ -1256,6 +1525,7 @@ abstract class _$TindakDatabase extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     memories,
     memoryEntities,
+    syncMeta,
     memoriesVisibleCreatedIdx,
     memoryEntitiesMemoryIdx,
     memoryEntitiesSearchIdx,
@@ -1283,6 +1553,7 @@ typedef $$MemoriesTableCreateCompanionBuilder =
       Value<int?> deletedAt,
       Value<String?> ownerUserId,
       required String syncStatus,
+      Value<int?> serverUpdatedAt,
       Value<int> rowid,
     });
 typedef $$MemoriesTableUpdateCompanionBuilder =
@@ -1296,6 +1567,7 @@ typedef $$MemoriesTableUpdateCompanionBuilder =
       Value<int?> deletedAt,
       Value<String?> ownerUserId,
       Value<String> syncStatus,
+      Value<int?> serverUpdatedAt,
       Value<int> rowid,
     });
 
@@ -1380,6 +1652,11 @@ class $$MemoriesTableFilterComposer
     builder: (column) => ColumnFilters(column),
   );
 
+  ColumnFilters<int> get serverUpdatedAt => $composableBuilder(
+    column: $table.serverUpdatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
   Expression<bool> memoryEntitiesRefs(
     Expression<bool> Function($$MemoryEntitiesTableFilterComposer f) f,
   ) {
@@ -1459,6 +1736,11 @@ class $$MemoriesTableOrderingComposer
     column: $table.syncStatus,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<int> get serverUpdatedAt => $composableBuilder(
+    column: $table.serverUpdatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$MemoriesTableAnnotationComposer
@@ -1500,6 +1782,11 @@ class $$MemoriesTableAnnotationComposer
 
   GeneratedColumn<String> get syncStatus => $composableBuilder(
     column: $table.syncStatus,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get serverUpdatedAt => $composableBuilder(
+    column: $table.serverUpdatedAt,
     builder: (column) => column,
   );
 
@@ -1566,6 +1853,7 @@ class $$MemoriesTableTableManager
                 Value<int?> deletedAt = const Value.absent(),
                 Value<String?> ownerUserId = const Value.absent(),
                 Value<String> syncStatus = const Value.absent(),
+                Value<int?> serverUpdatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MemoriesCompanion(
                 id: id,
@@ -1577,6 +1865,7 @@ class $$MemoriesTableTableManager
                 deletedAt: deletedAt,
                 ownerUserId: ownerUserId,
                 syncStatus: syncStatus,
+                serverUpdatedAt: serverUpdatedAt,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -1590,6 +1879,7 @@ class $$MemoriesTableTableManager
                 Value<int?> deletedAt = const Value.absent(),
                 Value<String?> ownerUserId = const Value.absent(),
                 required String syncStatus,
+                Value<int?> serverUpdatedAt = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => MemoriesCompanion.insert(
                 id: id,
@@ -1601,6 +1891,7 @@ class $$MemoriesTableTableManager
                 deletedAt: deletedAt,
                 ownerUserId: ownerUserId,
                 syncStatus: syncStatus,
+                serverUpdatedAt: serverUpdatedAt,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -2094,6 +2385,145 @@ typedef $$MemoryEntitiesTableProcessedTableManager =
       MemoryEntityRow,
       PrefetchHooks Function({bool memoryId})
     >;
+typedef $$SyncMetaTableCreateCompanionBuilder =
+    SyncMetaCompanion Function({
+      required String key,
+      required String value,
+      Value<int> rowid,
+    });
+typedef $$SyncMetaTableUpdateCompanionBuilder =
+    SyncMetaCompanion Function({
+      Value<String> key,
+      Value<String> value,
+      Value<int> rowid,
+    });
+
+class $$SyncMetaTableFilterComposer
+    extends Composer<_$TindakDatabase, $SyncMetaTable> {
+  $$SyncMetaTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SyncMetaTableOrderingComposer
+    extends Composer<_$TindakDatabase, $SyncMetaTable> {
+  $$SyncMetaTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SyncMetaTableAnnotationComposer
+    extends Composer<_$TindakDatabase, $SyncMetaTable> {
+  $$SyncMetaTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<String> get value =>
+      $composableBuilder(column: $table.value, builder: (column) => column);
+}
+
+class $$SyncMetaTableTableManager
+    extends
+        RootTableManager<
+          _$TindakDatabase,
+          $SyncMetaTable,
+          SyncMetaRow,
+          $$SyncMetaTableFilterComposer,
+          $$SyncMetaTableOrderingComposer,
+          $$SyncMetaTableAnnotationComposer,
+          $$SyncMetaTableCreateCompanionBuilder,
+          $$SyncMetaTableUpdateCompanionBuilder,
+          (
+            SyncMetaRow,
+            BaseReferences<_$TindakDatabase, $SyncMetaTable, SyncMetaRow>,
+          ),
+          SyncMetaRow,
+          PrefetchHooks Function()
+        > {
+  $$SyncMetaTableTableManager(_$TindakDatabase db, $SyncMetaTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SyncMetaTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SyncMetaTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SyncMetaTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> key = const Value.absent(),
+                Value<String> value = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SyncMetaCompanion(key: key, value: value, rowid: rowid),
+          createCompanionCallback:
+              ({
+                required String key,
+                required String value,
+                Value<int> rowid = const Value.absent(),
+              }) => SyncMetaCompanion.insert(
+                key: key,
+                value: value,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SyncMetaTableProcessedTableManager =
+    ProcessedTableManager<
+      _$TindakDatabase,
+      $SyncMetaTable,
+      SyncMetaRow,
+      $$SyncMetaTableFilterComposer,
+      $$SyncMetaTableOrderingComposer,
+      $$SyncMetaTableAnnotationComposer,
+      $$SyncMetaTableCreateCompanionBuilder,
+      $$SyncMetaTableUpdateCompanionBuilder,
+      (
+        SyncMetaRow,
+        BaseReferences<_$TindakDatabase, $SyncMetaTable, SyncMetaRow>,
+      ),
+      SyncMetaRow,
+      PrefetchHooks Function()
+    >;
 
 class $TindakDatabaseManager {
   final _$TindakDatabase _db;
@@ -2102,4 +2532,6 @@ class $TindakDatabaseManager {
       $$MemoriesTableTableManager(_db, _db.memories);
   $$MemoryEntitiesTableTableManager get memoryEntities =>
       $$MemoryEntitiesTableTableManager(_db, _db.memoryEntities);
+  $$SyncMetaTableTableManager get syncMeta =>
+      $$SyncMetaTableTableManager(_db, _db.syncMeta);
 }

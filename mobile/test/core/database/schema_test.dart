@@ -39,8 +39,8 @@ void main() {
   );
 
   group('shape', () {
-    test('schema version is 1', () {
-      expect(db.schemaVersion, 1);
+    test('schema version is 2', () {
+      expect(db.schemaVersion, 2);
     });
 
     test('memories has exactly the documented columns', () async {
@@ -54,7 +54,21 @@ void main() {
         'deleted_at',
         'owner_user_id',
         'sync_status',
+        'server_updated_at',
       ]);
+    });
+
+    test('sync_meta is a key/value table keyed by key', () async {
+      expect(await columnsOf('sync_meta'), <String>['key', 'value']);
+      await db.customStatement(
+        "INSERT INTO sync_meta (key, value) VALUES ('pull_cursor:u', 'a')",
+      );
+      await expectLater(
+        db.customStatement(
+          "INSERT INTO sync_meta (key, value) VALUES ('pull_cursor:u', 'b')",
+        ),
+        throwsA(isA<Exception>()),
+      );
     });
 
     test('memory_entities has exactly the documented columns', () async {
