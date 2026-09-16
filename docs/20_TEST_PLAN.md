@@ -506,6 +506,12 @@ Real OTP delivery and verification: pending, scenario 2 below.
 | 11 | Sign in again with the same account | synced items return | **PASS** — after Bukan Sekarang: both live account items returned ("Disimpan dalam akaun"), the deleted one did not; the guest item stayed "Pada peranti ini" and unchanged in ownership; one unified list, no Local/Cloud tabs; cloud still 2 live, 1 tombstone, 1 user, 4 entities |
 | 12 | Tetapan open/close again on the live build | no close | **PASS** — 12 open/close cycles signed in, including 4 home/resume and 3 recents cycles; Settings opened every time, one process throughout, crash buffer empty, data unchanged |
 
+**Credential rotation check (2026-09-16).** The exposed Resend key was revoked
+and is dead; a sending-only replacement was stored in the git-ignored
+`supabase/.env` and set as Supabase's SMTP password. A real sign-in code
+requested through Supabase afterwards was **delivered and confirmed by the CEO**,
+so authentication email still works on the rotated credential.
+
 Cloud baseline before scenario 2, taken 2026-09-16 03:22 UTC: 0 users,
 0 memories, 0 entities — scenario 3 is judged against it. All device steps ran
 on the emulator against the live project; the CEO read each code from their own
