@@ -26,7 +26,7 @@ part 'tindak_database.g.dart';
 /// Stored text is private. Drift's generated row classes print their fields in
 /// `toString`, so rows never cross into logging or UI directly: the repository
 /// maps them to domain types whose `toString` omits content.
-@DriftDatabase(tables: <Type>[Memories, MemoryEntities, SyncMeta])
+@DriftDatabase(tables: <Type>[Memories, MemoryEntities, SyncMeta, Reminders])
 class TindakDatabase extends _$TindakDatabase {
   TindakDatabase(super.executor);
 
@@ -59,18 +59,31 @@ class TindakDatabase extends _$TindakDatabase {
   ///   server has ever acknowledged a row
   ///   (docs/14_M5B_RECONCILIATION.md section 2.1); and the `sync_meta`
   ///   table for the per-account pull cursor.
+  /// - 3 — M7a: the `reminders` table. Device-local only: reminders are never
+  ///   synced in V1 (B-5), because a reminder that reached a second device
+  ///   could not fire there anyway (PD-031).
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
+
+  /// At most one *active* reminder per memory (B-7), enforced by the database
+  /// so two fast taps cannot create two. A fired or cancelled reminder stays
+  /// as history and does not occupy the slot (B-4).
+  static const String activeReminderIndex =
+      'CREATE UNIQUE INDEX IF NOT EXISTS reminders_one_active_per_memory '
+      "ON reminders (memory_id) WHERE status = 'scheduled'";
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
-    onCreate: (m) => m.createAll(),
+    onCreate: (m) async {
+      await m.createAll();
+      await customStatement(activeReminderIndex);
+    },
     onUpgrade: (m, from, to) async {
       // Only known steps are run. An unknown jump — including a downgrade from
       // a newer build — is refused rather than guessed at, because guessing
       // with a user's only copy of their data is the one thing a migration must
       // never do.
-      if (from < 1 || to > 2 || from >= to) {
+      if (from < 1 || to > 3 || from >= to) {
         throw StateError('No migration path from schema $from to $to');
       }
       if (from < 2) {
@@ -79,6 +92,12 @@ class TindakDatabase extends _$TindakDatabase {
         // server has never seen this row", which is true of every M5a row.
         await m.addColumn(memories, memories.serverUpdatedAt);
         await m.createTable(syncMeta);
+      }
+      if (from < 3) {
+        // A new table and its index. Nothing existing is touched, so no saved
+        // memory can be affected by this step.
+        await m.createTable(reminders);
+        await customStatement(activeReminderIndex);
       }
     },
     beforeOpen: (details) async {
@@ -193,6 +212,72 @@ class MemoryEntities extends Table {
   List<String> get customConstraints => <String>[
     'CHECK (confidence >= 0 AND confidence <= 1)',
     'CHECK (start_offset >= 0 AND end_offset > start_offset)',
+  ];
+}
+
+/// One reminder for one memory (schema v3, M7a).
+///
+/// **Device-local, always.** Reminders are never synced (B-5): firing is a
+/// local notification (ADR-008), so a reminder copied to a second device could
+/// not alert anyone there (PD-031). There is no owner-scoped sync state here,
+/// only ownership — enough to move a reminder with its memory at migration and
+/// to remove it at sign-out.
+///
+/// The user's **chosen local date and time is authoritative** (B-2).
+/// [remindAt] is a cache of it, recomputed if the device's time zone changes,
+/// so "9:00 on 25 September" stays 9:00 wherever the user is.
+@DataClassName('ReminderRow')
+@TableIndex(name: 'reminders_memory_idx', columns: {#memoryId})
+@TableIndex(name: 'reminders_remind_at_idx', columns: {#remindAt})
+class Reminders extends Table {
+  /// Client-generated UUIDv4.
+  TextColumn get id => text()();
+
+  TextColumn get memoryId => text()
+      .named('memory_id')
+      .references(Memories, #id, onDelete: KeyAction.cascade)();
+
+  /// Null means the memory is guest-owned. Follows its memory.
+  TextColumn get ownerUserId => text().named('owner_user_id').nullable()();
+
+  /// What the user chose: `YYYY-MM-DD` and `HH:MM`, plus the zone they were in
+  /// when they chose it — kept for diagnostics, not for scheduling.
+  TextColumn get localDate => text().named('local_date')();
+  TextColumn get localTime => text().named('local_time')();
+  TextColumn get timeZone => text().named('time_zone')();
+
+  /// The resolved instant, epoch milliseconds UTC. Derived from the columns
+  /// above; the scheduler uses it, the user never sees it.
+  IntColumn get remindAt => integer().named('remind_at')();
+
+  /// The instant last handed to the device scheduler, epoch ms, or null when
+  /// nothing has been scheduled yet.
+  ///
+  /// Android can say *which* alarms it holds but not *when* they will fire, so
+  /// without this a reminder moved to a new time would keep its old alarm and
+  /// alert at the moment the user changed away from.
+  IntColumn get scheduledAt => integer().named('scheduled_at').nullable()();
+
+  /// `scheduled` (active), `fired` (has alerted — history, B-4) or
+  /// `cancelled`. Only `scheduled` occupies a memory's single active slot.
+  TextColumn get status => text()();
+
+  /// The Android notification id. Device-local and stable for the life of the
+  /// reminder, so rescheduling replaces an alarm instead of adding one.
+  IntColumn get notificationId =>
+      integer().named('notification_id').autoIncrement()();
+
+  IntColumn get createdAt => integer().named('created_at')();
+  IntColumn get updatedAt => integer().named('updated_at')();
+
+  @override
+  List<String> get customConstraints => <String>[
+    'UNIQUE (id)',
+    "CHECK (status IN ('scheduled', 'fired', 'cancelled'))",
+    'CHECK (length(id) = 36)',
+    'CHECK (length(local_date) = 10)',
+    'CHECK (length(local_time) = 5)',
+    'CHECK (updated_at >= created_at)',
   ];
 }
 

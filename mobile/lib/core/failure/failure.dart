@@ -94,6 +94,28 @@ final class ContentTooLongFailure extends Failure {
   int get hashCode => Object.hash(runtimeType, limit);
 }
 
+/// The chosen reminder time has already passed (M7, B-3).
+///
+/// Checked when the reminder is committed, not only in the picker: a user can
+/// open the picker at 11:58 and press Tetapkan after midnight, and a reminder
+/// silently rolled forward to tomorrow is exactly the kind of invented time
+/// PD-007 forbids.
+final class ReminderTimeInPastFailure extends Failure {
+  const ReminderTimeInPastFailure();
+
+  @override
+  String get code => 'reminder_time_in_past';
+}
+
+/// The memory already has an active reminder (M7, B-7). Replace it rather than
+/// adding a second one.
+final class ReminderAlreadyExistsFailure extends Failure {
+  const ReminderAlreadyExistsFailure();
+
+  @override
+  String get code => 'reminder_exists';
+}
+
 /// Anything not anticipated. Carries a stable [reason] code, never a message
 /// built from user content.
 final class UnexpectedFailure extends Failure {

@@ -296,14 +296,17 @@ class MemoryRow extends DataClass implements Insertable<MemoryRow> {
   final int createdAt;
   final int updatedAt;
 
-  /// Reserved for a future sync tombstone (PD-021). M5a deletes rows outright
-  /// and never sets this; every read ignores rows where it is set.
+  /// A sync tombstone (PD-021): set when an account item is deleted, removed
+  /// once the cloud has the deletion. Guest items are deleted outright. Every
+  /// read ignores rows where it is set.
   final int? deletedAt;
 
-  /// Null means guest-owned. Set only by M5b sign-in and migration.
+  /// Null means guest-owned. Set by a signed-in save, a pull, or the explicit
+  /// guest migration (PD-044) — never by sign-in alone.
   final String? ownerUserId;
 
-  /// `local_only` in M5a, always.
+  /// `local_only` (guest), `pending` (account, not yet acknowledged) or
+  /// `synced`.
   final String syncStatus;
 
   /// The server's `updated_at` from the last successful push or pull, epoch ms
@@ -1500,12 +1503,747 @@ class SyncMetaCompanion extends UpdateCompanion<SyncMetaRow> {
   }
 }
 
+class $RemindersTable extends Reminders
+    with TableInfo<$RemindersTable, ReminderRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $RemindersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<String> id = GeneratedColumn<String>(
+    'id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _memoryIdMeta = const VerificationMeta(
+    'memoryId',
+  );
+  @override
+  late final GeneratedColumn<String> memoryId = GeneratedColumn<String>(
+    'memory_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'REFERENCES memories (id) ON DELETE CASCADE',
+    ),
+  );
+  static const VerificationMeta _ownerUserIdMeta = const VerificationMeta(
+    'ownerUserId',
+  );
+  @override
+  late final GeneratedColumn<String> ownerUserId = GeneratedColumn<String>(
+    'owner_user_id',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _localDateMeta = const VerificationMeta(
+    'localDate',
+  );
+  @override
+  late final GeneratedColumn<String> localDate = GeneratedColumn<String>(
+    'local_date',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _localTimeMeta = const VerificationMeta(
+    'localTime',
+  );
+  @override
+  late final GeneratedColumn<String> localTime = GeneratedColumn<String>(
+    'local_time',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _timeZoneMeta = const VerificationMeta(
+    'timeZone',
+  );
+  @override
+  late final GeneratedColumn<String> timeZone = GeneratedColumn<String>(
+    'time_zone',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _remindAtMeta = const VerificationMeta(
+    'remindAt',
+  );
+  @override
+  late final GeneratedColumn<int> remindAt = GeneratedColumn<int>(
+    'remind_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _scheduledAtMeta = const VerificationMeta(
+    'scheduledAt',
+  );
+  @override
+  late final GeneratedColumn<int> scheduledAt = GeneratedColumn<int>(
+    'scheduled_at',
+    aliasedName,
+    true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+  );
+  static const VerificationMeta _statusMeta = const VerificationMeta('status');
+  @override
+  late final GeneratedColumn<String> status = GeneratedColumn<String>(
+    'status',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _notificationIdMeta = const VerificationMeta(
+    'notificationId',
+  );
+  @override
+  late final GeneratedColumn<int> notificationId = GeneratedColumn<int>(
+    'notification_id',
+    aliasedName,
+    false,
+    hasAutoIncrement: true,
+    type: DriftSqlType.int,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'PRIMARY KEY AUTOINCREMENT',
+    ),
+  );
+  static const VerificationMeta _createdAtMeta = const VerificationMeta(
+    'createdAt',
+  );
+  @override
+  late final GeneratedColumn<int> createdAt = GeneratedColumn<int>(
+    'created_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<int> updatedAt = GeneratedColumn<int>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [
+    id,
+    memoryId,
+    ownerUserId,
+    localDate,
+    localTime,
+    timeZone,
+    remindAt,
+    scheduledAt,
+    status,
+    notificationId,
+    createdAt,
+    updatedAt,
+  ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'reminders';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<ReminderRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    } else if (isInserting) {
+      context.missing(_idMeta);
+    }
+    if (data.containsKey('memory_id')) {
+      context.handle(
+        _memoryIdMeta,
+        memoryId.isAcceptableOrUnknown(data['memory_id']!, _memoryIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_memoryIdMeta);
+    }
+    if (data.containsKey('owner_user_id')) {
+      context.handle(
+        _ownerUserIdMeta,
+        ownerUserId.isAcceptableOrUnknown(
+          data['owner_user_id']!,
+          _ownerUserIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('local_date')) {
+      context.handle(
+        _localDateMeta,
+        localDate.isAcceptableOrUnknown(data['local_date']!, _localDateMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_localDateMeta);
+    }
+    if (data.containsKey('local_time')) {
+      context.handle(
+        _localTimeMeta,
+        localTime.isAcceptableOrUnknown(data['local_time']!, _localTimeMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_localTimeMeta);
+    }
+    if (data.containsKey('time_zone')) {
+      context.handle(
+        _timeZoneMeta,
+        timeZone.isAcceptableOrUnknown(data['time_zone']!, _timeZoneMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_timeZoneMeta);
+    }
+    if (data.containsKey('remind_at')) {
+      context.handle(
+        _remindAtMeta,
+        remindAt.isAcceptableOrUnknown(data['remind_at']!, _remindAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_remindAtMeta);
+    }
+    if (data.containsKey('scheduled_at')) {
+      context.handle(
+        _scheduledAtMeta,
+        scheduledAt.isAcceptableOrUnknown(
+          data['scheduled_at']!,
+          _scheduledAtMeta,
+        ),
+      );
+    }
+    if (data.containsKey('status')) {
+      context.handle(
+        _statusMeta,
+        status.isAcceptableOrUnknown(data['status']!, _statusMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_statusMeta);
+    }
+    if (data.containsKey('notification_id')) {
+      context.handle(
+        _notificationIdMeta,
+        notificationId.isAcceptableOrUnknown(
+          data['notification_id']!,
+          _notificationIdMeta,
+        ),
+      );
+    }
+    if (data.containsKey('created_at')) {
+      context.handle(
+        _createdAtMeta,
+        createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_createdAtMeta);
+    }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_updatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {notificationId};
+  @override
+  ReminderRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return ReminderRow(
+      id: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}id'],
+      )!,
+      memoryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}memory_id'],
+      )!,
+      ownerUserId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}owner_user_id'],
+      ),
+      localDate: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}local_date'],
+      )!,
+      localTime: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}local_time'],
+      )!,
+      timeZone: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}time_zone'],
+      )!,
+      remindAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}remind_at'],
+      )!,
+      scheduledAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}scheduled_at'],
+      ),
+      status: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}status'],
+      )!,
+      notificationId: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}notification_id'],
+      )!,
+      createdAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}created_at'],
+      )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $RemindersTable createAlias(String alias) {
+    return $RemindersTable(attachedDatabase, alias);
+  }
+}
+
+class ReminderRow extends DataClass implements Insertable<ReminderRow> {
+  /// Client-generated UUIDv4.
+  final String id;
+  final String memoryId;
+
+  /// Null means the memory is guest-owned. Follows its memory.
+  final String? ownerUserId;
+
+  /// What the user chose: `YYYY-MM-DD` and `HH:MM`, plus the zone they were in
+  /// when they chose it — kept for diagnostics, not for scheduling.
+  final String localDate;
+  final String localTime;
+  final String timeZone;
+
+  /// The resolved instant, epoch milliseconds UTC. Derived from the columns
+  /// above; the scheduler uses it, the user never sees it.
+  final int remindAt;
+
+  /// The instant last handed to the device scheduler, epoch ms, or null when
+  /// nothing has been scheduled yet.
+  ///
+  /// Android can say *which* alarms it holds but not *when* they will fire, so
+  /// without this a reminder moved to a new time would keep its old alarm and
+  /// alert at the moment the user changed away from.
+  final int? scheduledAt;
+
+  /// `scheduled` (active), `fired` (has alerted — history, B-4) or
+  /// `cancelled`. Only `scheduled` occupies a memory's single active slot.
+  final String status;
+
+  /// The Android notification id. Device-local and stable for the life of the
+  /// reminder, so rescheduling replaces an alarm instead of adding one.
+  final int notificationId;
+  final int createdAt;
+  final int updatedAt;
+  const ReminderRow({
+    required this.id,
+    required this.memoryId,
+    this.ownerUserId,
+    required this.localDate,
+    required this.localTime,
+    required this.timeZone,
+    required this.remindAt,
+    this.scheduledAt,
+    required this.status,
+    required this.notificationId,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<String>(id);
+    map['memory_id'] = Variable<String>(memoryId);
+    if (!nullToAbsent || ownerUserId != null) {
+      map['owner_user_id'] = Variable<String>(ownerUserId);
+    }
+    map['local_date'] = Variable<String>(localDate);
+    map['local_time'] = Variable<String>(localTime);
+    map['time_zone'] = Variable<String>(timeZone);
+    map['remind_at'] = Variable<int>(remindAt);
+    if (!nullToAbsent || scheduledAt != null) {
+      map['scheduled_at'] = Variable<int>(scheduledAt);
+    }
+    map['status'] = Variable<String>(status);
+    map['notification_id'] = Variable<int>(notificationId);
+    map['created_at'] = Variable<int>(createdAt);
+    map['updated_at'] = Variable<int>(updatedAt);
+    return map;
+  }
+
+  RemindersCompanion toCompanion(bool nullToAbsent) {
+    return RemindersCompanion(
+      id: Value(id),
+      memoryId: Value(memoryId),
+      ownerUserId: ownerUserId == null && nullToAbsent
+          ? const Value.absent()
+          : Value(ownerUserId),
+      localDate: Value(localDate),
+      localTime: Value(localTime),
+      timeZone: Value(timeZone),
+      remindAt: Value(remindAt),
+      scheduledAt: scheduledAt == null && nullToAbsent
+          ? const Value.absent()
+          : Value(scheduledAt),
+      status: Value(status),
+      notificationId: Value(notificationId),
+      createdAt: Value(createdAt),
+      updatedAt: Value(updatedAt),
+    );
+  }
+
+  factory ReminderRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return ReminderRow(
+      id: serializer.fromJson<String>(json['id']),
+      memoryId: serializer.fromJson<String>(json['memoryId']),
+      ownerUserId: serializer.fromJson<String?>(json['ownerUserId']),
+      localDate: serializer.fromJson<String>(json['localDate']),
+      localTime: serializer.fromJson<String>(json['localTime']),
+      timeZone: serializer.fromJson<String>(json['timeZone']),
+      remindAt: serializer.fromJson<int>(json['remindAt']),
+      scheduledAt: serializer.fromJson<int?>(json['scheduledAt']),
+      status: serializer.fromJson<String>(json['status']),
+      notificationId: serializer.fromJson<int>(json['notificationId']),
+      createdAt: serializer.fromJson<int>(json['createdAt']),
+      updatedAt: serializer.fromJson<int>(json['updatedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<String>(id),
+      'memoryId': serializer.toJson<String>(memoryId),
+      'ownerUserId': serializer.toJson<String?>(ownerUserId),
+      'localDate': serializer.toJson<String>(localDate),
+      'localTime': serializer.toJson<String>(localTime),
+      'timeZone': serializer.toJson<String>(timeZone),
+      'remindAt': serializer.toJson<int>(remindAt),
+      'scheduledAt': serializer.toJson<int?>(scheduledAt),
+      'status': serializer.toJson<String>(status),
+      'notificationId': serializer.toJson<int>(notificationId),
+      'createdAt': serializer.toJson<int>(createdAt),
+      'updatedAt': serializer.toJson<int>(updatedAt),
+    };
+  }
+
+  ReminderRow copyWith({
+    String? id,
+    String? memoryId,
+    Value<String?> ownerUserId = const Value.absent(),
+    String? localDate,
+    String? localTime,
+    String? timeZone,
+    int? remindAt,
+    Value<int?> scheduledAt = const Value.absent(),
+    String? status,
+    int? notificationId,
+    int? createdAt,
+    int? updatedAt,
+  }) => ReminderRow(
+    id: id ?? this.id,
+    memoryId: memoryId ?? this.memoryId,
+    ownerUserId: ownerUserId.present ? ownerUserId.value : this.ownerUserId,
+    localDate: localDate ?? this.localDate,
+    localTime: localTime ?? this.localTime,
+    timeZone: timeZone ?? this.timeZone,
+    remindAt: remindAt ?? this.remindAt,
+    scheduledAt: scheduledAt.present ? scheduledAt.value : this.scheduledAt,
+    status: status ?? this.status,
+    notificationId: notificationId ?? this.notificationId,
+    createdAt: createdAt ?? this.createdAt,
+    updatedAt: updatedAt ?? this.updatedAt,
+  );
+  ReminderRow copyWithCompanion(RemindersCompanion data) {
+    return ReminderRow(
+      id: data.id.present ? data.id.value : this.id,
+      memoryId: data.memoryId.present ? data.memoryId.value : this.memoryId,
+      ownerUserId: data.ownerUserId.present
+          ? data.ownerUserId.value
+          : this.ownerUserId,
+      localDate: data.localDate.present ? data.localDate.value : this.localDate,
+      localTime: data.localTime.present ? data.localTime.value : this.localTime,
+      timeZone: data.timeZone.present ? data.timeZone.value : this.timeZone,
+      remindAt: data.remindAt.present ? data.remindAt.value : this.remindAt,
+      scheduledAt: data.scheduledAt.present
+          ? data.scheduledAt.value
+          : this.scheduledAt,
+      status: data.status.present ? data.status.value : this.status,
+      notificationId: data.notificationId.present
+          ? data.notificationId.value
+          : this.notificationId,
+      createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('ReminderRow(')
+          ..write('id: $id, ')
+          ..write('memoryId: $memoryId, ')
+          ..write('ownerUserId: $ownerUserId, ')
+          ..write('localDate: $localDate, ')
+          ..write('localTime: $localTime, ')
+          ..write('timeZone: $timeZone, ')
+          ..write('remindAt: $remindAt, ')
+          ..write('scheduledAt: $scheduledAt, ')
+          ..write('status: $status, ')
+          ..write('notificationId: $notificationId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+    id,
+    memoryId,
+    ownerUserId,
+    localDate,
+    localTime,
+    timeZone,
+    remindAt,
+    scheduledAt,
+    status,
+    notificationId,
+    createdAt,
+    updatedAt,
+  );
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is ReminderRow &&
+          other.id == this.id &&
+          other.memoryId == this.memoryId &&
+          other.ownerUserId == this.ownerUserId &&
+          other.localDate == this.localDate &&
+          other.localTime == this.localTime &&
+          other.timeZone == this.timeZone &&
+          other.remindAt == this.remindAt &&
+          other.scheduledAt == this.scheduledAt &&
+          other.status == this.status &&
+          other.notificationId == this.notificationId &&
+          other.createdAt == this.createdAt &&
+          other.updatedAt == this.updatedAt);
+}
+
+class RemindersCompanion extends UpdateCompanion<ReminderRow> {
+  final Value<String> id;
+  final Value<String> memoryId;
+  final Value<String?> ownerUserId;
+  final Value<String> localDate;
+  final Value<String> localTime;
+  final Value<String> timeZone;
+  final Value<int> remindAt;
+  final Value<int?> scheduledAt;
+  final Value<String> status;
+  final Value<int> notificationId;
+  final Value<int> createdAt;
+  final Value<int> updatedAt;
+  const RemindersCompanion({
+    this.id = const Value.absent(),
+    this.memoryId = const Value.absent(),
+    this.ownerUserId = const Value.absent(),
+    this.localDate = const Value.absent(),
+    this.localTime = const Value.absent(),
+    this.timeZone = const Value.absent(),
+    this.remindAt = const Value.absent(),
+    this.scheduledAt = const Value.absent(),
+    this.status = const Value.absent(),
+    this.notificationId = const Value.absent(),
+    this.createdAt = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+  });
+  RemindersCompanion.insert({
+    required String id,
+    required String memoryId,
+    this.ownerUserId = const Value.absent(),
+    required String localDate,
+    required String localTime,
+    required String timeZone,
+    required int remindAt,
+    this.scheduledAt = const Value.absent(),
+    required String status,
+    this.notificationId = const Value.absent(),
+    required int createdAt,
+    required int updatedAt,
+  }) : id = Value(id),
+       memoryId = Value(memoryId),
+       localDate = Value(localDate),
+       localTime = Value(localTime),
+       timeZone = Value(timeZone),
+       remindAt = Value(remindAt),
+       status = Value(status),
+       createdAt = Value(createdAt),
+       updatedAt = Value(updatedAt);
+  static Insertable<ReminderRow> custom({
+    Expression<String>? id,
+    Expression<String>? memoryId,
+    Expression<String>? ownerUserId,
+    Expression<String>? localDate,
+    Expression<String>? localTime,
+    Expression<String>? timeZone,
+    Expression<int>? remindAt,
+    Expression<int>? scheduledAt,
+    Expression<String>? status,
+    Expression<int>? notificationId,
+    Expression<int>? createdAt,
+    Expression<int>? updatedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (memoryId != null) 'memory_id': memoryId,
+      if (ownerUserId != null) 'owner_user_id': ownerUserId,
+      if (localDate != null) 'local_date': localDate,
+      if (localTime != null) 'local_time': localTime,
+      if (timeZone != null) 'time_zone': timeZone,
+      if (remindAt != null) 'remind_at': remindAt,
+      if (scheduledAt != null) 'scheduled_at': scheduledAt,
+      if (status != null) 'status': status,
+      if (notificationId != null) 'notification_id': notificationId,
+      if (createdAt != null) 'created_at': createdAt,
+      if (updatedAt != null) 'updated_at': updatedAt,
+    });
+  }
+
+  RemindersCompanion copyWith({
+    Value<String>? id,
+    Value<String>? memoryId,
+    Value<String?>? ownerUserId,
+    Value<String>? localDate,
+    Value<String>? localTime,
+    Value<String>? timeZone,
+    Value<int>? remindAt,
+    Value<int?>? scheduledAt,
+    Value<String>? status,
+    Value<int>? notificationId,
+    Value<int>? createdAt,
+    Value<int>? updatedAt,
+  }) {
+    return RemindersCompanion(
+      id: id ?? this.id,
+      memoryId: memoryId ?? this.memoryId,
+      ownerUserId: ownerUserId ?? this.ownerUserId,
+      localDate: localDate ?? this.localDate,
+      localTime: localTime ?? this.localTime,
+      timeZone: timeZone ?? this.timeZone,
+      remindAt: remindAt ?? this.remindAt,
+      scheduledAt: scheduledAt ?? this.scheduledAt,
+      status: status ?? this.status,
+      notificationId: notificationId ?? this.notificationId,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<String>(id.value);
+    }
+    if (memoryId.present) {
+      map['memory_id'] = Variable<String>(memoryId.value);
+    }
+    if (ownerUserId.present) {
+      map['owner_user_id'] = Variable<String>(ownerUserId.value);
+    }
+    if (localDate.present) {
+      map['local_date'] = Variable<String>(localDate.value);
+    }
+    if (localTime.present) {
+      map['local_time'] = Variable<String>(localTime.value);
+    }
+    if (timeZone.present) {
+      map['time_zone'] = Variable<String>(timeZone.value);
+    }
+    if (remindAt.present) {
+      map['remind_at'] = Variable<int>(remindAt.value);
+    }
+    if (scheduledAt.present) {
+      map['scheduled_at'] = Variable<int>(scheduledAt.value);
+    }
+    if (status.present) {
+      map['status'] = Variable<String>(status.value);
+    }
+    if (notificationId.present) {
+      map['notification_id'] = Variable<int>(notificationId.value);
+    }
+    if (createdAt.present) {
+      map['created_at'] = Variable<int>(createdAt.value);
+    }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<int>(updatedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('RemindersCompanion(')
+          ..write('id: $id, ')
+          ..write('memoryId: $memoryId, ')
+          ..write('ownerUserId: $ownerUserId, ')
+          ..write('localDate: $localDate, ')
+          ..write('localTime: $localTime, ')
+          ..write('timeZone: $timeZone, ')
+          ..write('remindAt: $remindAt, ')
+          ..write('scheduledAt: $scheduledAt, ')
+          ..write('status: $status, ')
+          ..write('notificationId: $notificationId, ')
+          ..write('createdAt: $createdAt, ')
+          ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$TindakDatabase extends GeneratedDatabase {
   _$TindakDatabase(QueryExecutor e) : super(e);
   $TindakDatabaseManager get managers => $TindakDatabaseManager(this);
   late final $MemoriesTable memories = $MemoriesTable(this);
   late final $MemoryEntitiesTable memoryEntities = $MemoryEntitiesTable(this);
   late final $SyncMetaTable syncMeta = $SyncMetaTable(this);
+  late final $RemindersTable reminders = $RemindersTable(this);
   late final Index memoriesVisibleCreatedIdx = Index(
     'memories_visible_created_idx',
     'CREATE INDEX memories_visible_created_idx ON memories (deleted_at, created_at)',
@@ -1518,6 +2256,14 @@ abstract class _$TindakDatabase extends GeneratedDatabase {
     'memory_entities_search_idx',
     'CREATE INDEX memory_entities_search_idx ON memory_entities (search_value)',
   );
+  late final Index remindersMemoryIdx = Index(
+    'reminders_memory_idx',
+    'CREATE INDEX reminders_memory_idx ON reminders (memory_id)',
+  );
+  late final Index remindersRemindAtIdx = Index(
+    'reminders_remind_at_idx',
+    'CREATE INDEX reminders_remind_at_idx ON reminders (remind_at)',
+  );
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -1526,9 +2272,12 @@ abstract class _$TindakDatabase extends GeneratedDatabase {
     memories,
     memoryEntities,
     syncMeta,
+    reminders,
     memoriesVisibleCreatedIdx,
     memoryEntitiesMemoryIdx,
     memoryEntitiesSearchIdx,
+    remindersMemoryIdx,
+    remindersRemindAtIdx,
   ];
   @override
   StreamQueryUpdateRules get streamUpdateRules => const StreamQueryUpdateRules([
@@ -1538,6 +2287,13 @@ abstract class _$TindakDatabase extends GeneratedDatabase {
         limitUpdateKind: UpdateKind.delete,
       ),
       result: [TableUpdate('memory_entities', kind: UpdateKind.delete)],
+    ),
+    WritePropagation(
+      on: TableUpdateQuery.onTableName(
+        'memories',
+        limitUpdateKind: UpdateKind.delete,
+      ),
+      result: [TableUpdate('reminders', kind: UpdateKind.delete)],
     ),
   ]);
 }
@@ -1592,6 +2348,24 @@ final class $$MemoriesTableReferences
     ).filter((f) => f.memoryId.id.sqlEquals($_itemColumn<String>('id')!));
 
     final cache = $_typedResult.readTableOrNull(_memoryEntitiesRefsTable($_db));
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: cache),
+    );
+  }
+
+  static MultiTypedResultKey<$RemindersTable, List<ReminderRow>>
+  _remindersRefsTable(_$TindakDatabase db) => MultiTypedResultKey.fromTable(
+    db.reminders,
+    aliasName: $_aliasNameGenerator(db.memories.id, db.reminders.memoryId),
+  );
+
+  $$RemindersTableProcessedTableManager get remindersRefs {
+    final manager = $$RemindersTableTableManager(
+      $_db,
+      $_db.reminders,
+    ).filter((f) => f.memoryId.id.sqlEquals($_itemColumn<String>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_remindersRefsTable($_db));
     return ProcessedTableManager(
       manager.$state.copyWith(prefetchedData: cache),
     );
@@ -1673,6 +2447,31 @@ class $$MemoriesTableFilterComposer
           }) => $$MemoryEntitiesTableFilterComposer(
             $db: $db,
             $table: $db.memoryEntities,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
+
+  Expression<bool> remindersRefs(
+    Expression<bool> Function($$RemindersTableFilterComposer f) f,
+  ) {
+    final $$RemindersTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.reminders,
+      getReferencedColumn: (t) => t.memoryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RemindersTableFilterComposer(
+            $db: $db,
+            $table: $db.reminders,
             $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
             joinBuilder: joinBuilder,
             $removeJoinBuilderFromRootComposer:
@@ -1814,6 +2613,31 @@ class $$MemoriesTableAnnotationComposer
     );
     return f(composer);
   }
+
+  Expression<T> remindersRefs<T extends Object>(
+    Expression<T> Function($$RemindersTableAnnotationComposer a) f,
+  ) {
+    final $$RemindersTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.id,
+      referencedTable: $db.reminders,
+      getReferencedColumn: (t) => t.memoryId,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$RemindersTableAnnotationComposer(
+            $db: $db,
+            $table: $db.reminders,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return f(composer);
+  }
 }
 
 class $$MemoriesTableTableManager
@@ -1829,7 +2653,7 @@ class $$MemoriesTableTableManager
           $$MemoriesTableUpdateCompanionBuilder,
           (MemoryRow, $$MemoriesTableReferences),
           MemoryRow,
-          PrefetchHooks Function({bool memoryEntitiesRefs})
+          PrefetchHooks Function({bool memoryEntitiesRefs, bool remindersRefs})
         > {
   $$MemoriesTableTableManager(_$TindakDatabase db, $MemoriesTable table)
     : super(
@@ -1902,37 +2726,63 @@ class $$MemoriesTableTableManager
                 ),
               )
               .toList(),
-          prefetchHooksCallback: ({memoryEntitiesRefs = false}) {
-            return PrefetchHooks(
-              db: db,
-              explicitlyWatchedTables: [
-                if (memoryEntitiesRefs) db.memoryEntities,
-              ],
-              addJoins: null,
-              getPrefetchedDataCallback: (items) async {
-                return [
-                  if (memoryEntitiesRefs)
-                    await $_getPrefetchedData<
-                      MemoryRow,
-                      $MemoriesTable,
-                      MemoryEntityRow
-                    >(
-                      currentTable: table,
-                      referencedTable: $$MemoriesTableReferences
-                          ._memoryEntitiesRefsTable(db),
-                      managerFromTypedResult: (p0) => $$MemoriesTableReferences(
-                        db,
-                        table,
-                        p0,
-                      ).memoryEntitiesRefs,
-                      referencedItemsForCurrentItem: (item, referencedItems) =>
-                          referencedItems.where((e) => e.memoryId == item.id),
-                      typedResults: items,
-                    ),
-                ];
+          prefetchHooksCallback:
+              ({memoryEntitiesRefs = false, remindersRefs = false}) {
+                return PrefetchHooks(
+                  db: db,
+                  explicitlyWatchedTables: [
+                    if (memoryEntitiesRefs) db.memoryEntities,
+                    if (remindersRefs) db.reminders,
+                  ],
+                  addJoins: null,
+                  getPrefetchedDataCallback: (items) async {
+                    return [
+                      if (memoryEntitiesRefs)
+                        await $_getPrefetchedData<
+                          MemoryRow,
+                          $MemoriesTable,
+                          MemoryEntityRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$MemoriesTableReferences
+                              ._memoryEntitiesRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$MemoriesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).memoryEntitiesRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.memoryId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                      if (remindersRefs)
+                        await $_getPrefetchedData<
+                          MemoryRow,
+                          $MemoriesTable,
+                          ReminderRow
+                        >(
+                          currentTable: table,
+                          referencedTable: $$MemoriesTableReferences
+                              ._remindersRefsTable(db),
+                          managerFromTypedResult: (p0) =>
+                              $$MemoriesTableReferences(
+                                db,
+                                table,
+                                p0,
+                              ).remindersRefs,
+                          referencedItemsForCurrentItem:
+                              (item, referencedItems) => referencedItems.where(
+                                (e) => e.memoryId == item.id,
+                              ),
+                          typedResults: items,
+                        ),
+                    ];
+                  },
+                );
               },
-            );
-          },
         ),
       );
 }
@@ -1949,7 +2799,7 @@ typedef $$MemoriesTableProcessedTableManager =
       $$MemoriesTableUpdateCompanionBuilder,
       (MemoryRow, $$MemoriesTableReferences),
       MemoryRow,
-      PrefetchHooks Function({bool memoryEntitiesRefs})
+      PrefetchHooks Function({bool memoryEntitiesRefs, bool remindersRefs})
     >;
 typedef $$MemoryEntitiesTableCreateCompanionBuilder =
     MemoryEntitiesCompanion Function({
@@ -2524,6 +3374,456 @@ typedef $$SyncMetaTableProcessedTableManager =
       SyncMetaRow,
       PrefetchHooks Function()
     >;
+typedef $$RemindersTableCreateCompanionBuilder =
+    RemindersCompanion Function({
+      required String id,
+      required String memoryId,
+      Value<String?> ownerUserId,
+      required String localDate,
+      required String localTime,
+      required String timeZone,
+      required int remindAt,
+      Value<int?> scheduledAt,
+      required String status,
+      Value<int> notificationId,
+      required int createdAt,
+      required int updatedAt,
+    });
+typedef $$RemindersTableUpdateCompanionBuilder =
+    RemindersCompanion Function({
+      Value<String> id,
+      Value<String> memoryId,
+      Value<String?> ownerUserId,
+      Value<String> localDate,
+      Value<String> localTime,
+      Value<String> timeZone,
+      Value<int> remindAt,
+      Value<int?> scheduledAt,
+      Value<String> status,
+      Value<int> notificationId,
+      Value<int> createdAt,
+      Value<int> updatedAt,
+    });
+
+final class $$RemindersTableReferences
+    extends BaseReferences<_$TindakDatabase, $RemindersTable, ReminderRow> {
+  $$RemindersTableReferences(super.$_db, super.$_table, super.$_typedResult);
+
+  static $MemoriesTable _memoryIdTable(_$TindakDatabase db) => db.memories
+      .createAlias($_aliasNameGenerator(db.reminders.memoryId, db.memories.id));
+
+  $$MemoriesTableProcessedTableManager get memoryId {
+    final $_column = $_itemColumn<String>('memory_id')!;
+
+    final manager = $$MemoriesTableTableManager(
+      $_db,
+      $_db.memories,
+    ).filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_memoryIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+      manager.$state.copyWith(prefetchedData: [item]),
+    );
+  }
+}
+
+class $$RemindersTableFilterComposer
+    extends Composer<_$TindakDatabase, $RemindersTable> {
+  $$RemindersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get localDate => $composableBuilder(
+    column: $table.localDate,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get localTime => $composableBuilder(
+    column: $table.localTime,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get timeZone => $composableBuilder(
+    column: $table.timeZone,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get remindAt => $composableBuilder(
+    column: $table.remindAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get scheduledAt => $composableBuilder(
+    column: $table.scheduledAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get notificationId => $composableBuilder(
+    column: $table.notificationId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  $$MemoriesTableFilterComposer get memoryId {
+    final $$MemoriesTableFilterComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.memoryId,
+      referencedTable: $db.memories,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MemoriesTableFilterComposer(
+            $db: $db,
+            $table: $db.memories,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$RemindersTableOrderingComposer
+    extends Composer<_$TindakDatabase, $RemindersTable> {
+  $$RemindersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get id => $composableBuilder(
+    column: $table.id,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get localDate => $composableBuilder(
+    column: $table.localDate,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get localTime => $composableBuilder(
+    column: $table.localTime,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get timeZone => $composableBuilder(
+    column: $table.timeZone,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get remindAt => $composableBuilder(
+    column: $table.remindAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get scheduledAt => $composableBuilder(
+    column: $table.scheduledAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get status => $composableBuilder(
+    column: $table.status,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get notificationId => $composableBuilder(
+    column: $table.notificationId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get createdAt => $composableBuilder(
+    column: $table.createdAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  $$MemoriesTableOrderingComposer get memoryId {
+    final $$MemoriesTableOrderingComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.memoryId,
+      referencedTable: $db.memories,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MemoriesTableOrderingComposer(
+            $db: $db,
+            $table: $db.memories,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$RemindersTableAnnotationComposer
+    extends Composer<_$TindakDatabase, $RemindersTable> {
+  $$RemindersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get ownerUserId => $composableBuilder(
+    column: $table.ownerUserId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get localDate =>
+      $composableBuilder(column: $table.localDate, builder: (column) => column);
+
+  GeneratedColumn<String> get localTime =>
+      $composableBuilder(column: $table.localTime, builder: (column) => column);
+
+  GeneratedColumn<String> get timeZone =>
+      $composableBuilder(column: $table.timeZone, builder: (column) => column);
+
+  GeneratedColumn<int> get remindAt =>
+      $composableBuilder(column: $table.remindAt, builder: (column) => column);
+
+  GeneratedColumn<int> get scheduledAt => $composableBuilder(
+    column: $table.scheduledAt,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get status =>
+      $composableBuilder(column: $table.status, builder: (column) => column);
+
+  GeneratedColumn<int> get notificationId => $composableBuilder(
+    column: $table.notificationId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<int> get createdAt =>
+      $composableBuilder(column: $table.createdAt, builder: (column) => column);
+
+  GeneratedColumn<int> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  $$MemoriesTableAnnotationComposer get memoryId {
+    final $$MemoriesTableAnnotationComposer composer = $composerBuilder(
+      composer: this,
+      getCurrentColumn: (t) => t.memoryId,
+      referencedTable: $db.memories,
+      getReferencedColumn: (t) => t.id,
+      builder:
+          (
+            joinBuilder, {
+            $addJoinBuilderToRootComposer,
+            $removeJoinBuilderFromRootComposer,
+          }) => $$MemoriesTableAnnotationComposer(
+            $db: $db,
+            $table: $db.memories,
+            $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+            joinBuilder: joinBuilder,
+            $removeJoinBuilderFromRootComposer:
+                $removeJoinBuilderFromRootComposer,
+          ),
+    );
+    return composer;
+  }
+}
+
+class $$RemindersTableTableManager
+    extends
+        RootTableManager<
+          _$TindakDatabase,
+          $RemindersTable,
+          ReminderRow,
+          $$RemindersTableFilterComposer,
+          $$RemindersTableOrderingComposer,
+          $$RemindersTableAnnotationComposer,
+          $$RemindersTableCreateCompanionBuilder,
+          $$RemindersTableUpdateCompanionBuilder,
+          (ReminderRow, $$RemindersTableReferences),
+          ReminderRow,
+          PrefetchHooks Function({bool memoryId})
+        > {
+  $$RemindersTableTableManager(_$TindakDatabase db, $RemindersTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$RemindersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$RemindersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$RemindersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> id = const Value.absent(),
+                Value<String> memoryId = const Value.absent(),
+                Value<String?> ownerUserId = const Value.absent(),
+                Value<String> localDate = const Value.absent(),
+                Value<String> localTime = const Value.absent(),
+                Value<String> timeZone = const Value.absent(),
+                Value<int> remindAt = const Value.absent(),
+                Value<int?> scheduledAt = const Value.absent(),
+                Value<String> status = const Value.absent(),
+                Value<int> notificationId = const Value.absent(),
+                Value<int> createdAt = const Value.absent(),
+                Value<int> updatedAt = const Value.absent(),
+              }) => RemindersCompanion(
+                id: id,
+                memoryId: memoryId,
+                ownerUserId: ownerUserId,
+                localDate: localDate,
+                localTime: localTime,
+                timeZone: timeZone,
+                remindAt: remindAt,
+                scheduledAt: scheduledAt,
+                status: status,
+                notificationId: notificationId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          createCompanionCallback:
+              ({
+                required String id,
+                required String memoryId,
+                Value<String?> ownerUserId = const Value.absent(),
+                required String localDate,
+                required String localTime,
+                required String timeZone,
+                required int remindAt,
+                Value<int?> scheduledAt = const Value.absent(),
+                required String status,
+                Value<int> notificationId = const Value.absent(),
+                required int createdAt,
+                required int updatedAt,
+              }) => RemindersCompanion.insert(
+                id: id,
+                memoryId: memoryId,
+                ownerUserId: ownerUserId,
+                localDate: localDate,
+                localTime: localTime,
+                timeZone: timeZone,
+                remindAt: remindAt,
+                scheduledAt: scheduledAt,
+                status: status,
+                notificationId: notificationId,
+                createdAt: createdAt,
+                updatedAt: updatedAt,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable(table),
+                  $$RemindersTableReferences(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: ({memoryId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins:
+                  <
+                    T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic
+                    >
+                  >(state) {
+                    if (memoryId) {
+                      state =
+                          state.withJoin(
+                                currentTable: table,
+                                currentColumn: table.memoryId,
+                                referencedTable: $$RemindersTableReferences
+                                    ._memoryIdTable(db),
+                                referencedColumn: $$RemindersTableReferences
+                                    ._memoryIdTable(db)
+                                    .id,
+                              )
+                              as T;
+                    }
+
+                    return state;
+                  },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ),
+      );
+}
+
+typedef $$RemindersTableProcessedTableManager =
+    ProcessedTableManager<
+      _$TindakDatabase,
+      $RemindersTable,
+      ReminderRow,
+      $$RemindersTableFilterComposer,
+      $$RemindersTableOrderingComposer,
+      $$RemindersTableAnnotationComposer,
+      $$RemindersTableCreateCompanionBuilder,
+      $$RemindersTableUpdateCompanionBuilder,
+      (ReminderRow, $$RemindersTableReferences),
+      ReminderRow,
+      PrefetchHooks Function({bool memoryId})
+    >;
 
 class $TindakDatabaseManager {
   final _$TindakDatabase _db;
@@ -2534,4 +3834,6 @@ class $TindakDatabaseManager {
       $$MemoryEntitiesTableTableManager(_db, _db.memoryEntities);
   $$SyncMetaTableTableManager get syncMeta =>
       $$SyncMetaTableTableManager(_db, _db.syncMeta);
+  $$RemindersTableTableManager get reminders =>
+      $$RemindersTableTableManager(_db, _db.reminders);
 }
