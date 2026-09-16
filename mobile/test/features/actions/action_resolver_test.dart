@@ -33,9 +33,10 @@ void main() {
       expect(kinds(only('082-123456')), <ActionKind>[ActionKind.call]);
     });
 
-    test('a link offers Open', () {
+    test('a link offers Open and Semak Keselamatan', () {
       expect(kinds(only('https://example.com')), <ActionKind>[
         ActionKind.openUrl,
+        ActionKind.securityCheck,
       ]);
     });
 
@@ -52,14 +53,14 @@ void main() {
     });
 
     test('offers nothing beyond the shipped milestones', () {
-      // M4 shipped the first three, M6b added Salin and Ingatkan. A real
-      // reminder is M7, Security Check M8, Try AI M9 — none of them may
-      // appear here early.
+      // M4 shipped the first three, M6b added Salin and Ingatkan, M8a adds
+      // Semak Keselamatan. Try AI is M9 and must not appear here early.
       expect(ActionKind.values, <ActionKind>[
         ActionKind.call,
         ActionKind.whatsapp,
         ActionKind.openUrl,
         ActionKind.copy,
+        ActionKind.securityCheck,
         ActionKind.remind,
       ]);
     });

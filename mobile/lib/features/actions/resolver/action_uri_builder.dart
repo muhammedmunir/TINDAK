@@ -40,7 +40,7 @@ final class ActionUriBuilder {
       ActionKind.openUrl => _openUrl(action, value),
       // Neither leaves the device or starts another app, so neither has a URI
       // to build. They are carried out by the runner itself.
-      ActionKind.copy || ActionKind.remind => null,
+      ActionKind.copy || ActionKind.remind || ActionKind.securityCheck => null,
     };
   }
 

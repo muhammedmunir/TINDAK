@@ -2,8 +2,8 @@ import 'package:tindak/features/understanding/model/detected_entity.dart';
 
 /// What a user can explicitly do with a detected entity.
 ///
-/// M4 shipped the first three and M6b adds two. Save is M5a, Security Check is
-/// M8, Try AI is M9 — each arrives with its own milestone and gate.
+/// M4 shipped the first three, M6b added two, M8a adds Security Check. Save is
+/// M5a and Try AI is M9 — each arrives with its own milestone and gate.
 enum ActionKind {
   /// Opens the dialer pre-filled. Does **not** place the call; the user still
   /// presses call in the dialer, and TINDAK needs no CALL_PHONE permission.
@@ -17,6 +17,10 @@ enum ActionKind {
 
   /// Puts an amount on the clipboard, in its canonical form (M6b).
   copy,
+
+  /// Checks a link before opening it. Runs on device; the online half needs
+  /// an account and arrives with M8b (PD-012).
+  securityCheck,
 
   /// A date's reminder. **M6 schedules nothing**: the reminder flow, the time
   /// the user picks and the notification permission all arrive with M7. Here it

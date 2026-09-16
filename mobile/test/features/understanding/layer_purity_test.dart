@@ -83,6 +83,7 @@ void main() {
       'lib/features/auth/data/secure_session_storage.dart',
       'lib/features/auth/data/supabase_auth_gateway.dart',
       'lib/features/sync/data/supabase_cloud_memory_api.dart',
+      'lib/features/security/data/edge_reputation_provider.dart',
     };
     final supabase = RegExp(r'''import\s+['"]package:supabase''');
     final users = <String>[];
@@ -122,6 +123,51 @@ void main() {
     }
 
     expect(users, <String>['lib/features/actions/executor/external_launcher.dart']);
+  });
+
+  test('Protect reaches the network in one file only (M8)', () {
+    // The adapter below is the single door out: it calls TINDAK's own Edge
+    // Function, which holds the Web Risk key. Everything else in Protect —
+    // the analyser, the combination rules, the screen — stays offline, and a
+    // background scanner would arrive as one of these imports first.
+    const adapter = 'lib/features/security/data/edge_reputation_provider.dart';
+    final forbidden = <RegExp>[
+      RegExp(r'''import\s+['"]package:supabase'''),
+      RegExp(r'''import\s+['"]package:http/'''),
+      RegExp(r'''import\s+['"]dart:io'''),
+      RegExp(r'''import\s+['"]package:tindak/features/ai/'''),
+      RegExp(r'HttpClient'),
+      RegExp(r'Timer\('),
+      RegExp(r'Clipboard\.'),
+    ];
+
+    final found = <String>[];
+    for (final entity in Directory('lib/features/security').listSync(
+      recursive: true,
+    )) {
+      if (entity is! File || !entity.path.endsWith('.dart')) continue;
+      final path = entity.path.replaceAll(r'\', '/');
+      if (path.endsWith('edge_reputation_provider.dart')) continue;
+
+      final source = entity.readAsStringSync();
+      for (final pattern in forbidden) {
+        if (pattern.hasMatch(source)) found.add('$path: ${pattern.pattern}');
+      }
+    }
+
+    expect(found, isEmpty);
+    expect(File(adapter).existsSync(), isTrue);
+  });
+
+  test('the local analyser cannot reach HIGH RISK', () {
+    // Enforced in code as well as in tests: nothing on the device is strong
+    // enough evidence to call a link dangerous (M8 plan, section 3.1).
+    final code = File('lib/features/security/analyzer/url_safety_analyzer.dart')
+        .readAsLinesSync()
+        .where((line) => !line.trimLeft().startsWith('//'))
+        .join(' ');
+
+    expect(code.contains('RiskLevel.high'), isFalse);
   });
 
   test('the clipboard is touched in exactly two files', () {

@@ -569,6 +569,163 @@ reminder from the local time the user chose on every start and resume.
 
 ---
 
+## 9.3 M8a Protect (local) — evidence record
+
+### Heuristic matrix
+
+Every check, its level, the words the user reads, and the pair of tests that
+pin it. All of them run on device with no network.
+
+| Code | Level | Malay reason | Fires on | Must not fire on |
+|---|---|---|---|---|
+| `credentialsInUrl` | SUSPICIOUS | Pautan ini mengandungi nama pengguna atau kata laluan sebelum nama domain. | `https://maybank2u.com.my@evil.example/login` | `https://example.com/path@handle` |
+| `encodedAuthorityCharacter` | SUSPICIOUS | Nama domain dalam pautan ini disembunyikan menggunakan aksara berkod. | `https://maybank2u.com.my%40evil.example/login` | `https://example.com/search%40term` |
+| `mixedScriptHost` | SUSPICIOUS | Nama domain mencampurkan huruf daripada sistem tulisan berbeza. | `https://mayb<Cyrillic а>nk.com` | a wholly non-Latin domain |
+| `normalisationMismatch` | SUSPICIOUS | Pautan yang dipaparkan berbeza daripada pautan sebenar. | shown `tnb.com.my`, real `evil.example` | `example.com` → `https://example.com` |
+| `notEncrypted` | CAUTION | Pautan ini tidak menggunakan sambungan HTTPS. | `http://example.com` | `https://example.com` |
+| `ipAddressHost` | CAUTION | Pautan ini menggunakan alamat IP secara terus. | `https://192.168.1.10/login` | `https://192-168-1-10.example.com`, `https://999.999.999.999` |
+| `punycodeHost` | CAUTION | Nama domain menggunakan format Punycode. | `https://xn--80ak6aa92e.com` | `https://example.com` |
+| `unusualPort` | CAUTION | Pautan ini menggunakan port yang tidak biasa. | `https://example.com:8443/x` | `:443`, `:80` |
+| `deepSubdomains` | CAUTION | Nama domain mempunyai terlalu banyak bahagian. | `https://a.b.c.d.e.example.com` | `https://a.b.c.co.uk` |
+| `urlShortener` | CAUTION | Pautan ini menggunakan perkhidmatan pemendek pautan, jadi destinasi sebenar tidak kelihatan. | `https://bit.ly/3abcdef` | `https://bitly.example.com/x` |
+
+Left out deliberately: brand impersonation (C-4), URL length, and general
+percent-encoding. Each would guess.
+
+### Automated (2026-09-16)
+
+`flutter analyze` clean, **784/784** tests pass — 25 analyser, 13 result and
+action, and the scope guards below.
+
+Guards that hold the milestone's shape:
+
+- the local analyser's source cannot mention `RiskLevel.high`, so no on-device
+  input can reach it;
+- `lib/features/security` may not import Supabase, an HTTP client, `dart:io`,
+  AI, or touch a `Timer` or the clipboard — a background scanner would arrive
+  as one of those imports first;
+- three cautions stay CAUTION (no scoring, C-2);
+- a clean check never opens what M4 refuses.
+
+### Emulator (2026-09-16)
+
+| Scenario | Result |
+|---|---|
+| HTTPS link, guest | **RISIKO RENDAH**, "Tiada tanda risiko ditemui dalam semakan tempatan.", plus the separate sign-in line — the level is not penalised for being a guest (C-1) |
+| `http://` link | **BERHATI-HATI**, "Pautan ini tidak menggunakan sambungan HTTPS." |
+| `https://maybank2u.com.my@contoh-penipu.xyz/login` | **MENCURIGAKAN**, with the credentials reason; the row's host reads `contoh-penipu.xyz` |
+| Opening a suspicious link | asks "Pautan ini mempunyai tanda risiko. Anda masih mahu membukanya?"; confirming opened Chrome through the existing M4 path |
+| Airplane mode | full check ran offline: port + shortener, two cautions, stayed **BERHATI-HATI** |
+| Every result | carries the disclaimer; no percentage or score anywhere |
+
+No URL left the device at any point in M8a: there is no network code in the
+feature to send one.
+
+---
+
+## 9.4 M8b online reputation — evidence record
+
+Google Web Risk is **deferred by PD-047**: it will not answer without a
+billing-enabled Google Cloud project. So this section separates three things
+that are easy to blur — the request path reaching the real provider, a
+successful provider answer, and how TINDAK behaves when there is no answer.
+
+### Provider status (2026-09-16)
+
+| Claim | Evidence |
+|---|---|
+| A real request reached Web Risk | **PASS** — Google answered `403 BILLING_DISABLED` for project #192447746551, which only a served request produces |
+| A successful Web Risk lookup | **DEFERRED — PD-047.** Not attempted, not claimed |
+| Provider-unavailable handling | **PASS** — see the server matrix below |
+| Google Cloud billing | **NOT REQUIRED** for alpha |
+| The exposed key | removed from the function's secrets (8 → 7, `WEB_RISK_API_KEY` gone) and from `supabase/.env`; **deletion in the Google console is the CEO's step** |
+
+### Server — `url-check`, live (2026-09-16)
+
+Every row ran against the deployed function. No URL appears in any log line;
+the function logs status codes only.
+
+| Case | Result |
+|---|---|
+| No `Authorization` header | 401 `unauthenticated` |
+| Anon key only, no user token | 401 `unauthenticated` |
+| Body with an extra field | 400 `invalid_request` |
+| Body with no `url` | 400 `invalid_request` |
+| `url` not a string | 400 `invalid_request` |
+| `javascript:` and `file:` URLs | 400 each |
+| 2,100-character URL | 400 `invalid_request` |
+| Non-JSON body | 400 `invalid_request` |
+| 61st call in a day | 429 `quota_reached`, and **no provider request** |
+| Key present, provider refuses (billing) | 200 `unavailable` — never `no_known_threat` |
+| **Key absent (the PD-047 state)** | 200 `unavailable`, twice, `checks` stayed **0** |
+
+### Quota semantics — reported, not changed
+
+The CEO asked whether a rejected provider request eats the user's daily 60.
+Measured on a throwaway account created and deleted through the Auth Admin API:
+
+| Condition | Quota spent |
+|---|---|
+| `WEB_RISK_API_KEY` absent | **0 of 60** — the key is read before the quota is claimed |
+| Key present, provider then fails (403, timeout, 5xx) | **1 of 60 per call** |
+
+The second row is deliberate and stays: the quota is claimed before the request
+is sent, because claiming afterwards would let a caller drive unlimited traffic
+at the provider by forcing failures. Under PD-047 the key is absent, so today a
+user loses nothing. Revisit when Web Risk is enabled.
+
+### Server — quota and retention (2026-09-16)
+
+| Check | Result |
+|---|---|
+| `consume_reputation_check` is atomic | **PASS** — 65 concurrent attempts against a limit of 60: 60 granted, 5 refused, stored value exactly 60 |
+| `authenticated` can execute it | **no** — `service_role` only |
+| `reputation_usage` RLS | on, with **zero** policies: no client can read another person's usage, or their own |
+| Retention | `purge_reputation_usage()` on pg_cron, `tindak-purge-reputation-usage`, 18:30 UTC daily |
+| A `security_scans` table | does not exist — nothing in M8 needs to store a scan (PD-028) |
+
+### App — automated, fake provider (815/815, analyze clean)
+
+A successful provider answer is unavailable in the real world, so the cases
+that need one are pinned with a fake provider at the `ReputationProvider`
+seam — the same interface the Edge adapter implements.
+
+| Case | Expected | Test |
+|---|---|---|
+| Threat match, category known | **RISIKO TINGGI** + that category's sentence | `online_reputation_test.dart`, `disclosure_test.dart` |
+| Threat match, no category | **RISIKO TINGGI**, generic sentence | `online_reputation_test.dart` |
+| Clean answer on a suspicious link | stays **MENCURIGAKAN**; local findings intact | `online_reputation_test.dart` |
+| Clean answer on a caution | stays **BERHATI-HATI** | `online_reputation_test.dart` |
+| Offline / unavailable / quota / not signed in | level **unchanged**, status said plainly (C-1) | `online_reputation_test.dart` |
+| No failure ever reaches HIGH RISK | asserted over all four failure outcomes | `online_reputation_test.dart` |
+| Unavailable ≠ clean, in model and in copy | distinct status, distinct sentence | `online_reputation_test.dart` |
+| No unfinished check is worded "Tiada ancaman" | six statuses checked | `online_reputation_test.dart` |
+| First check asks before sending | disclosure shown, **zero** provider calls | `disclosure_test.dart` |
+| Batal | **zero** calls, not remembered, local result still shown | `disclosure_test.dart` |
+| Teruskan | exactly one call, remembered, not asked again | `disclosure_test.dart` |
+| Guest | never asked, **zero** calls, sign-in line shown | `disclosure_test.dart` |
+| Only the URL is sent | the normalised URL alone; the message is not | `online_reputation_test.dart` |
+| A result never prints a URL | `toString` carries no host or path | `online_reputation_test.dart` |
+
+Scope guards that hold M8b's shape:
+
+- `lib/features/security` may import Supabase in exactly one file,
+  `data/edge_reputation_provider.dart`; the analyser, the combination rules and
+  the screen stay offline;
+- the Supabase allow-list in `layer_purity_test.dart` names that adapter
+  explicitly, so a second network door fails the build;
+- the local analyser's source still cannot mention `RiskLevel.high` — only a
+  provider match reaches it.
+
+### Not done, and why
+
+| Item | Status |
+|---|---|
+| Successful Web Risk lookup, real threat URL | **DEFERRED — PD-047.** Google's official test URLs are ready for the day the provider is enabled; no live malicious URL was ever searched for |
+| On-device disclosure, guest and HIGH RISK screens with a real signed-in session | **CEO Alpha** — needs an OTP from the CEO's inbox |
+
+---
+
 ## 10. Integration
 
 ```text
