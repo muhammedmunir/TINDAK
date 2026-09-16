@@ -2,14 +2,14 @@
 
 **Owner:** Shared governance
 **Status:** ARCHITECTURE LOCKED — 2026-09-10
-ADR-001…ADR-033 Accepted · PD-001…PD-050 Accepted
+ADR-001…ADR-033 Accepted · PD-001…PD-051 Accepted
 
 Three registers, all binding:
 
 - **ADR-001…ADR-012** — founding decisions from the master plan.
 - **PD-001…PD-050** — product decisions. PD-001…PD-022 locked with Product Pack
   V1; PD-023…PD-029 from the Product Direction review of the Technical Pack;
-  PD-030…PD-031 at Architecture Lock; PD-032…PD-050 from milestone reviews.
+  PD-030…PD-031 at Architecture Lock; PD-032…PD-051 from milestone reviews.
 - **ADR-013…ADR-028** — architecture decisions from the Technical Pack.
   Product Direction passed them and the CEO locked them on 2026-09-10. They are
   binding for V1 unless superseded by a later CEO-approved decision.
@@ -802,6 +802,35 @@ and adding one would break every exhaustive switch in the action layer. A test
 pins the four names the wire format accepts.
 
 **Status:** Accepted — CEO, M9a gate, 2026-09-16.
+
+### PD-051 — Alpha AI strategy
+**Real cloud AI is not required for TINDAK Alpha. M9b is deferred. Alpha
+validates the deterministic core product first.**
+
+Not because AI is useless, but because the core loop — Share/Paste →
+Understand → Act → Remember → Remind → Protect — can be tested without it, and
+M9a proved AI can be added later without disturbing any of it.
+
+The provider situation has not changed: Gemini's free tier still uses content
+to improve products, which PD-048 forbids for a user's message, and its paid
+tier still needs a payment method. Other providers have different postures —
+OpenAI's API states inputs and outputs are not used for training by default —
+but that is not sufficient reason to add a provider before Alpha. Pricing,
+retention, free allowance, structured-output reliability and the operational
+dependency all still need evaluating. **No provider shopping now.**
+
+In the Alpha build, `[Cuba dengan AI]` answers *AI tidak tersedia buat masa
+ini*, exactly as M9a ships.
+
+This also buys evidence. If Alpha testers never reach for the AI fallback,
+TINDAK does not need to pay for a feature that solves nothing anyone felt. If
+they hit the unknown state often and press it, M9b has a product case rather
+than a technical one.
+
+**Deferred with it:** any AI API key, Edge Function, quota migration or
+provider adoption.
+
+**Status:** Accepted — CEO, after the M9a merge, 2026-09-16.
 
 ## ADR-033 — Model output is untrusted input
 **Decision:** a model's response is treated exactly like the shared text it
