@@ -1,5 +1,7 @@
+import 'package:tindak/features/understanding/model/date_value.dart';
 import 'package:tindak/features/understanding/model/detected_entity.dart';
 import 'package:tindak/features/understanding/model/entity_type.dart';
+import 'package:tindak/features/understanding/model/money_value.dart';
 
 /// Deterministic, local, non-AI search (PD-004).
 ///
@@ -23,11 +25,18 @@ final class MemorySearch {
   /// A phone stored as `+60123456789` is findable as `0123456789` — how
   /// Malaysians write it — and as `60123456789`. Punctuation in the query is
   /// handled by [digitsOf], so `012-345 6789` finds it too.
+  /// An amount is findable by what it looks like (`RM183.50`, `183.50`) and by
+  /// how it is stored (`18350`). A date is findable as ISO, as it is usually
+  /// typed, and by its month name.
   static String searchValueFor(DetectedEntity entity) {
     final normalized = entity.normalizedValue;
     return switch (entity.type) {
       EntityType.phone when normalized.startsWith('+60') =>
         '0${normalized.substring(3)} ${normalized.substring(1)}',
+      EntityType.money =>
+        MoneyValue.parse(normalized)?.searchValue ?? normalized.toLowerCase(),
+      EntityType.date =>
+        DateValue.parse(normalized)?.searchValue ?? normalized.toLowerCase(),
       _ => normalized.toLowerCase(),
     };
   }

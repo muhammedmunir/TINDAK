@@ -123,4 +123,24 @@ void main() {
 
     expect(users, <String>['lib/features/actions/executor/external_launcher.dart']);
   });
+
+  test('the clipboard is touched in exactly two files', () {
+    // ADR-004 and PD-033: one file reads the clipboard, and only on the Tampal
+    // press; one file writes it, and only on the Salin press. A third file
+    // touching the clipboard is how background reading would arrive.
+    const approved = <String>{
+      'lib/features/intake/clipboard_reader.dart',
+      'lib/features/actions/executor/clipboard_writer.dart',
+    };
+    final clipboard = RegExp(r'\bClipboard\.(getData|setData)\b');
+    final users = <String>[];
+    for (final entity in Directory('lib').listSync(recursive: true)) {
+      if (entity is! File || !entity.path.endsWith('.dart')) continue;
+      if (clipboard.hasMatch(entity.readAsStringSync())) {
+        users.add(entity.path.replaceAll(r'\', '/'));
+      }
+    }
+
+    expect(users.toSet(), approved);
+  });
 }

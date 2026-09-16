@@ -51,12 +51,16 @@ void main() {
       }
     });
 
-    test('offers nothing outside M4', () {
-      // Save is M5a, Reminder M7, Security Check M8, Try AI M9.
+    test('offers nothing beyond the shipped milestones', () {
+      // M4 shipped the first three, M6b added Salin and Ingatkan. A real
+      // reminder is M7, Security Check M8, Try AI M9 — none of them may
+      // appear here early.
       expect(ActionKind.values, <ActionKind>[
         ActionKind.call,
         ActionKind.whatsapp,
         ActionKind.openUrl,
+        ActionKind.copy,
+        ActionKind.remind,
       ]);
     });
   });

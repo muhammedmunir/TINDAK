@@ -2,7 +2,7 @@ import 'package:tindak/features/understanding/model/detected_entity.dart';
 
 /// What a user can explicitly do with a detected entity.
 ///
-/// M4 ships these three only. Save is M5a, Reminder is M7, Security Check is
+/// M4 shipped the first three and M6b adds two. Save is M5a, Security Check is
 /// M8, Try AI is M9 — each arrives with its own milestone and gate.
 enum ActionKind {
   /// Opens the dialer pre-filled. Does **not** place the call; the user still
@@ -14,6 +14,14 @@ enum ActionKind {
 
   /// Opens an http or https link in the user's browser.
   openUrl,
+
+  /// Puts an amount on the clipboard, in its canonical form (M6b).
+  copy,
+
+  /// A date's reminder. **M6 schedules nothing**: the reminder flow, the time
+  /// the user picks and the notification permission all arrive with M7. Here it
+  /// says so plainly rather than pretending a reminder was created.
+  remind,
 }
 
 /// One action bound to one entity.

@@ -15,6 +15,14 @@ import 'package:tindak/features/understanding/model/money_value.dart';
 const String actionUnavailableMessage =
     'Tindakan ini tidak dapat dibuka pada peranti ini.';
 
+/// Shown only after the clipboard has actually accepted the value (M6b).
+const String copiedMessage = 'Disalin.';
+
+/// A date's reminder belongs to M7. Approved copy: it says what will happen,
+/// not that something is broken, and nothing is scheduled.
+const String reminderComingSoonMessage =
+    'Peringatan akan tersedia dalam kemas kini akan datang.';
+
 /// Runs an action because the user pressed its button, and reports a failure
 /// quietly. Shared by the result screen and Memory detail, so a saved number
 /// behaves exactly like a freshly shared one.
@@ -28,15 +36,22 @@ Future<void> runActionWithFeedback(
   final messenger = ScaffoldMessenger.of(context);
   final outcome = await ref.read(actionRunnerProvider).run(action);
 
+  void say(String message) => messenger
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(message)));
+
   switch (outcome) {
     case ActionOutcome.launched:
     case ActionOutcome.busy:
       return;
+    // Said after the write succeeded, never before it (M6b).
+    case ActionOutcome.copied:
+      say(copiedMessage);
+    case ActionOutcome.notYetAvailable:
+      say(reminderComingSoonMessage);
     case ActionOutcome.rejected:
     case ActionOutcome.unavailable:
-      messenger
-        ..hideCurrentSnackBar()
-        ..showSnackBar(const SnackBar(content: Text(actionUnavailableMessage)));
+      say(actionUnavailableMessage);
   }
 }
 
@@ -149,11 +164,15 @@ class EntityRow extends StatelessWidget {
     ActionKind.call => 'Panggil',
     ActionKind.whatsapp => 'WhatsApp',
     ActionKind.openUrl => 'Buka',
+    ActionKind.copy => 'Salin',
+    ActionKind.remind => 'Ingatkan',
   };
 
   static IconData _iconFor(ActionKind kind) => switch (kind) {
     ActionKind.call => Icons.call_outlined,
     ActionKind.whatsapp => Icons.chat_outlined,
     ActionKind.openUrl => Icons.open_in_new,
+    ActionKind.copy => Icons.content_copy_outlined,
+    ActionKind.remind => Icons.notifications_none,
   };
 }
