@@ -627,6 +627,18 @@ SQL Editor and returns only the result grid. A database password that entered a
 chat transcript is reset immediately. No permission rule for Postgres is added.
 **Status:** Superseded by the CEO override below.
 
+### Operational safety rule — no direct writes to Supabase internal schemas
+Test accounts and any other auth data are created, changed and deleted **only**
+through the supported Supabase Auth Admin API. Direct `INSERT`, `UPDATE` or
+`DELETE` against `auth.*` is forbidden, even for a throwaway test user.
+
+**Why:** a hand-written `auth.users` row during M8b was missing columns GoTrue
+requires, and sign-in failed project-wide with "Database error querying schema"
+until the row was removed. The row looked complete; the internal schema has
+expectations that are not visible from the column list.
+
+**Status:** Accepted — CEO, M8b.
+
 ### PD-046 — Authentication email goes through custom SMTP; Resend first
 TINDAK V1 uses custom SMTP for Supabase authentication email. Resend is the
 initial provider. Supabase's default sender is unsuitable: this Free-tier project
