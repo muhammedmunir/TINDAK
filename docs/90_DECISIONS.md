@@ -680,6 +680,16 @@ steps. Risk explained and accepted by the CEO. Claude placed the connection in
 the git-ignored `supabase/.env`; the value is never printed or committed.
 Revisit before closed beta, when production is separated from development.
 
+**CEO waiver at the M5b close (2026-09-16):** the database password and the
+Supabase Management token `tindak-m5b-templates` both passed through a chat
+transcript, and the CEO chose to keep both rather than rotate them. Accepted
+knowingly: either can still reach production and the token can administer the
+whole Supabase account. The Resend key was rotated — the exposed key is revoked
+and dead, replaced by a sending-only key. **Both outstanding credentials are
+rotated before closed beta**, together with dev/test separation, and Resend's
+two unexplained "Supabase Integration" keys are audited then rather than deleted
+blind.
+
 ---
 
 # Part 4 — Open, awaiting decision
