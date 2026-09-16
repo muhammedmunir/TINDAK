@@ -3,8 +3,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:tindak/features/actions/executor/action_runner.dart';
 import 'package:tindak/features/actions/model/action_descriptor.dart';
+import 'package:tindak/features/understanding/model/date_value.dart';
 import 'package:tindak/features/understanding/model/detected_entity.dart';
 import 'package:tindak/features/understanding/model/entity_type.dart';
+import 'package:tindak/features/understanding/model/money_value.dart';
 
 /// Shown when an action could not be carried out (PD-037).
 ///
@@ -63,6 +65,16 @@ class EntityRow extends StatelessWidget {
       // UX section 6 shows the host. It is the part of a link that decides
       // where it really goes, and the part a lookalike tries to disguise.
       EntityType.url => (Icons.link, 'Pautan', hostOf(entity.normalizedValue)),
+      EntityType.money => (
+        Icons.payments_outlined,
+        'Wang',
+        displayValue(entity),
+      ),
+      EntityType.date => (
+        Icons.event_outlined,
+        'Tarikh',
+        displayValue(entity),
+      ),
     };
 
     return Padding(
@@ -117,6 +129,13 @@ class EntityRow extends StatelessWidget {
   static String displayValue(DetectedEntity entity) => switch (entity.type) {
     EntityType.phone => entity.rawValue,
     EntityType.url => hostOf(entity.normalizedValue),
+    // Canonical, not as typed: `rm25` reads as `RM25.00`, and a date always
+    // shows its full resolved year (PD approvals A-2 and A-3). A value this
+    // build cannot read falls back to the text the user wrote.
+    EntityType.money =>
+      MoneyValue.parse(entity.normalizedValue)?.display ?? entity.rawValue,
+    EntityType.date =>
+      DateValue.parse(entity.normalizedValue)?.display ?? entity.rawValue,
   };
 
   static String hostOf(String url) {

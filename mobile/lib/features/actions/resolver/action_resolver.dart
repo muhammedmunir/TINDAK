@@ -27,6 +27,10 @@ final class ActionResolver {
     EntityType.url => <ActionDescriptor>[
       ActionDescriptor(kind: ActionKind.openUrl, entity: entity),
     ],
+    // M6a understands money and dates; their actions — Salin and Ingatkan —
+    // arrive with M6b. Until then they carry no action rather than a button
+    // that does nothing.
+    EntityType.money || EntityType.date => const <ActionDescriptor>[],
   };
 
   static bool _isMobile(DetectedEntity phone) =>
