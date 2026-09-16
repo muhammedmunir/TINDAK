@@ -489,7 +489,7 @@ or plan upgrade.
 
 Real OTP delivery and verification: pending, scenario 2 below.
 
-#### Live end-to-end — PENDING (CEO with Claude)
+#### Live end-to-end (2026-09-15/16) — 12/12 PASS
 
 | # | Scenario | Expected | Result |
 |---|---|---|---|
@@ -503,8 +503,8 @@ Real OTP delivery and verification: pending, scenario 2 below.
 | 8 | Pull to refresh after 7 | item does not come back | **PASS** — two refreshes, no resurrection |
 | 9 | Log Keluar while offline with a pending change | blocked with PD-041 dialog, nothing deleted | **PASS** — exact PD-041 title and body, [Batal] [Cuba Lagi]; Batal left the user signed in with every row intact |
 | 10 | Log Keluar with empty queue | account items leave the UI, guest items stay usable | **PASS** — Home back to the empty state, cloud untouched (2 live, 1 tombstone); a later guest save shows device-only with the PD-019 notice |
-| 11 | Sign in again with the same account | synced items return | |
-| 12 | Tetapan open/close again on the live build | no close | |
+| 11 | Sign in again with the same account | synced items return | **PASS** — after Bukan Sekarang: both live account items returned ("Disimpan dalam akaun"), the deleted one did not; the guest item stayed "Pada peranti ini" and unchanged in ownership; one unified list, no Local/Cloud tabs; cloud still 2 live, 1 tombstone, 1 user, 4 entities |
+| 12 | Tetapan open/close again on the live build | no close | **PASS** — 12 open/close cycles signed in, including 4 home/resume and 3 recents cycles; Settings opened every time, one process throughout, crash buffer empty, data unchanged |
 
 Cloud baseline before scenario 2, taken 2026-09-16 03:22 UTC: 0 users,
 0 memories, 0 entities — scenario 3 is judged against it. All device steps ran
