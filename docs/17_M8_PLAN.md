@@ -1,7 +1,10 @@
 # 17 — M8 PLAN: Protect
 
 **Owner:** Technical Lead (Claude)
-**Status:** PROPOSED — awaiting Product Direction review. No code written.
+**Status:** BUILT — M8a closed, M8b built and validated. **Live Google Web Risk
+integration is deferred by PD-047** (billing barrier); the provider abstraction,
+Edge Function, quota and disclosure are all in place and the function answers
+`unavailable` with no key. Evidence: `20_TEST_PLAN.md` §9.3 and §9.4.
 **Baseline:** `develop @ 6069c3d`
 **Inputs:** M8 Product Direction Brief (2026-09-16), ADR-009, ADR-018, ADR-025,
 ADR-028, PD-012, PD-023, PD-024, PD-027, PD-028, PD-032,

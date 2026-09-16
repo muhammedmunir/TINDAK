@@ -115,12 +115,18 @@ Deno.serve(async (request: Request) => {
 
   if (!webRiskKey) {
     // Misconfiguration must read as "could not check", never as "nothing
-    // found".
+    // found". This is also the normal state under PD-047, which defers Web
+    // Risk: the key is checked *before* the quota below, so a provider that
+    // was never configured costs the user none of their 60.
     console.error('web_risk_key_missing');
     return reply('unavailable');
   }
 
   // --- quota, counted atomically before anything is sent ------------------
+  // Claimed before the request, not after it. A provider failure therefore
+  // spends one check — deliberate, because claiming afterwards would let a
+  // caller drive unlimited traffic at the provider by forcing failures
+  // (PD-047 records this and the CEO accepted it at the M8 gate).
   const asService = createClient(supabaseUrl, serviceKey);
   const { data: allowed, error: quotaError } = await asService.rpc(
     'consume_reputation_check',

@@ -3,6 +3,7 @@ import 'package:tindak/features/security/analyzer/url_safety_analyzer.dart';
 import 'package:tindak/features/security/data/reputation_provider.dart';
 import 'package:tindak/features/security/model/security_assessment.dart';
 import 'package:tindak/features/security/security_checker.dart';
+import 'package:tindak/features/security/security_copy.dart';
 import 'package:tindak/features/understanding/model/detected_entity.dart';
 import 'package:tindak/features/understanding/model/entity_type.dart';
 
@@ -181,6 +182,52 @@ void main() {
         ).check(urlEntity(clean));
 
         expect(result.level, isNot(RiskLevel.high));
+      }
+    });
+  });
+
+  group('an unconfigured provider is not a clean answer (PD-047)', () {
+    // Web Risk is deferred, so `unavailable` is the state TINDAK actually
+    // ships in. It must stay distinguishable from "checked, nothing found" in
+    // the model *and* in the words the user reads.
+    test('unavailable and clean are different states', () {
+      expect(OnlineCheckStatus.unavailable, isNot(OnlineCheckStatus.clean));
+      expect(
+        SecurityCopy.onlineStatus(OnlineCheckStatus.unavailable),
+        isNot(SecurityCopy.onlineStatus(OnlineCheckStatus.clean)),
+      );
+    });
+
+    test('no unfinished check is worded as an absence of threats', () {
+      // "Tiada ancaman diketahui ditemui" is a finding, and only the clean
+      // status has earned it.
+      for (final status in <OnlineCheckStatus>[
+        OnlineCheckStatus.unavailable,
+        OnlineCheckStatus.offline,
+        OnlineCheckStatus.quotaReached,
+        OnlineCheckStatus.notChecked,
+        OnlineCheckStatus.disclosureRequired,
+        OnlineCheckStatus.signInRequired,
+      ]) {
+        expect(
+          SecurityCopy.onlineStatus(status),
+          isNot(contains('Tiada ancaman')),
+          reason: '${status.name} must not read as "nothing found"',
+        );
+      }
+    });
+
+    test('an unconfigured provider leaves every local level alone', () async {
+      for (final url in <String>[clean, cautionable, suspicious]) {
+        final local = const UrlSafetyAnalyzer().analyse(url);
+        final combined = SecurityChecker.combine(
+          local,
+          const ReputationResult(ReputationOutcome.unavailable),
+        );
+
+        expect(combined.level, local.level);
+        expect(combined.onlineStatus, OnlineCheckStatus.unavailable);
+        expect(combined.onlineFinding, isNull);
       }
     });
   });

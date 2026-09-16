@@ -2,14 +2,14 @@
 
 **Owner:** Shared governance
 **Status:** ARCHITECTURE LOCKED — 2026-09-10
-ADR-001…ADR-032 Accepted · PD-001…PD-046 Accepted
+ADR-001…ADR-032 Accepted · PD-001…PD-047 Accepted
 
 Three registers, all binding:
 
 - **ADR-001…ADR-012** — founding decisions from the master plan.
-- **PD-001…PD-045** — product decisions. PD-001…PD-022 locked with Product Pack
+- **PD-001…PD-047** — product decisions. PD-001…PD-022 locked with Product Pack
   V1; PD-023…PD-029 from the Product Direction review of the Technical Pack;
-  PD-030…PD-031 at Architecture Lock; PD-032…PD-045 from milestone reviews.
+  PD-030…PD-031 at Architecture Lock; PD-032…PD-047 from milestone reviews.
 - **ADR-013…ADR-028** — architecture decisions from the Technical Pack.
   Product Direction passed them and the CEO locked them on 2026-09-10. They are
   binding for V1 unless superseded by a later CEO-approved decision.
@@ -656,6 +656,47 @@ git-ignored, never in Flutter, Git or logs.
 verified in Resend (SPF, DKIM, DMARC) and the sender switched from Resend's
 test address, which delivers only to the Resend account owner.
 
+### PD-047 — Google Web Risk live integration is deferred (M8b)
+Web Risk refuses every request until the Google Cloud project is attached to a
+billing account, and attaching one currently requires a payment the CEO is not
+making. Live Web Risk validation is therefore **deferred**, not failed, and
+**M8 does not require it to close**.
+
+**What this does not change.** Web Risk stays the chosen V1 provider (ADR-028).
+Google Safe Browsing is **not** substituted — its terms are non-commercial and
+TINDAK is planned for monetisation — and no other provider is adopted without
+Product Direction approval. The provider abstraction, the `url-check` Edge
+Function, the quota table and the one-time disclosure all stay exactly as
+built, so enabling the provider later is a key and a switch, not a redesign.
+
+**The deferred state is the unconfigured state.** With no `WEB_RISK_API_KEY`,
+the function answers `unavailable` and never `no_known_threat`. TINDAK reports
+that as *"Semakan dalam talian tidak tersedia"* — availability, never a clean
+verdict and never an escalation (C-1). Local Protect (M8a) is unaffected and
+runs in full.
+
+**Quota is not spent on a check that never happened.** The key is read before
+the quota is consumed, so an unconfigured provider costs the user nothing out
+of the 60 (verified live: two calls with no key, `checks` stayed 0). The
+separate case where the key *is* present but the provider then fails — the
+billing 403, a timeout, a 5xx — **does** consume one check, because the quota
+is claimed before the request is sent. That ordering is deliberate: claiming
+afterwards would let a user drive unlimited traffic at the provider by forcing
+failures. It is recorded here rather than changed silently; revisit when Web
+Risk is enabled.
+
+**The exposed key.** The Web Risk key reached Claude through a chat transcript
+and is treated as compromised. It has been removed from the Edge Function's
+secrets and from `supabase/.env`; **the CEO deletes it in the Google Cloud
+console.** No replacement key is created until Web Risk is deliberately
+re-enabled. Unlike the M5b waiver, nothing is kept in use here.
+
+**Correction on cost.** "Free" means within Google's current free allowance and
+current pricing. It is not a guarantee that a billing-enabled account is never
+charged. No financial risk is taken to close a gate.
+
+**Status:** Accepted — CEO, M8b, 2026-09-16.
+
 ### CEO OVERRIDE — TINDAK Supabase project administration (2026-09-15)
 **Decision:** Claude Code may administer the **TINDAK Supabase project** for
 development, deployment, migrations, authentication configuration, RLS and
@@ -711,14 +752,15 @@ Nothing is blocking implementation.
 | # | Topic | Outcome |
 |---|---|---|
 | O-1 | Architecture Lock | **APPROVED** — ADR-013…ADR-028 binding, 2026-09-10 |
-| O-2 | Google Web Risk | **ACCEPTED** as the planned V1 provider; billing and provisioning deferred until before M8; abstraction mandatory |
+| O-2 | Google Web Risk | **ACCEPTED** as the planned V1 provider; live integration **DEFERRED at M8b on the billing barrier — PD-047**; abstraction mandatory and built |
 | O-3 | Google Sign-In in V1 | **DEFERRED** — PD-030 |
 | O-4 | Cross-device reminder alarms | **ACCEPTED as a V1 limitation** — PD-031 |
 
 Carried to a later milestone, not open questions:
 
-- Google Cloud billing and Web Risk provisioning — before M8.
-- Reputation provider terms re-checked before M8 in case they change.
+- Google Cloud billing and Web Risk provisioning — **deferred past M8 by
+  PD-047**; revisit when there is a budget or a paying user base.
+- Reputation provider terms re-checked before the provider is enabled.
 
 ## Closed by the Product Direction review
 
