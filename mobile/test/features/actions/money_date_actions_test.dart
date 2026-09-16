@@ -72,6 +72,7 @@ void main() {
       ]);
       expect(resolver.resolve(url).map((a) => a.kind), <ActionKind>[
         ActionKind.openUrl,
+        ActionKind.securityCheck,
       ]);
     });
 

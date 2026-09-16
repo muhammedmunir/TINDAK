@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:tindak/features/actions/executor/action_runner.dart';
 import 'package:tindak/features/actions/model/action_descriptor.dart';
+import 'package:tindak/features/security/security_copy.dart';
 import 'package:tindak/features/understanding/model/date_value.dart';
 import 'package:tindak/features/understanding/model/detected_entity.dart';
 import 'package:tindak/features/understanding/model/entity_type.dart';
@@ -166,6 +167,7 @@ class EntityRow extends StatelessWidget {
     ActionKind.openUrl => 'Buka',
     ActionKind.copy => 'Salin',
     ActionKind.remind => 'Ingatkan',
+    ActionKind.securityCheck => SecurityCopy.checkAction,
   };
 
   static IconData _iconFor(ActionKind kind) => switch (kind) {
@@ -174,5 +176,6 @@ class EntityRow extends StatelessWidget {
     ActionKind.openUrl => Icons.open_in_new,
     ActionKind.copy => Icons.content_copy_outlined,
     ActionKind.remind => Icons.notifications_none,
+    ActionKind.securityCheck => Icons.shield_outlined,
   };
 }

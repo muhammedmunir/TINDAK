@@ -11,7 +11,7 @@ import 'package:tindak/features/understanding/model/entity_type.dart';
 /// | Entity | Actions |
 /// |---|---|
 /// | phone | Call; WhatsApp when the number is a mobile |
-/// | url | Open |
+/// | url | Open; Security Check |
 /// | money | Copy — the canonical amount (M6b) |
 /// | date | Reminder — which M6 does not yet create (M6b, M7) |
 final class ActionResolver {
@@ -28,6 +28,10 @@ final class ActionResolver {
     ],
     EntityType.url => <ActionDescriptor>[
       ActionDescriptor(kind: ActionKind.openUrl, entity: entity),
+      // Offered to everyone, guests included (PD-023). It runs on device;
+      // nothing is sent anywhere unless the user later signs in for the
+      // online half (PD-012).
+      ActionDescriptor(kind: ActionKind.securityCheck, entity: entity),
     ],
     EntityType.money => <ActionDescriptor>[
       ActionDescriptor(kind: ActionKind.copy, entity: entity),

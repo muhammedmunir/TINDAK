@@ -13,6 +13,7 @@ import 'package:tindak/features/memory/model/memory_record.dart';
 import 'package:tindak/features/reminders/reminder_providers.dart';
 import 'package:tindak/features/reminders/widgets/reminder_actions.dart';
 import 'package:tindak/features/reminders/widgets/reminder_section.dart';
+import 'package:tindak/features/security/security_check_action.dart';
 import 'package:tindak/features/sync/sync_providers.dart';
 import 'package:tindak/shared/saved_date_label.dart';
 
@@ -91,7 +92,13 @@ class _Detail extends ConsumerWidget {
                 EntityRow(
                   entity: entity,
                   actions: resolver.resolve(entity),
-                  onAction: (action) => action.kind == ActionKind.remind
+                  onAction: (action) => switch (action.kind) {
+                    ActionKind.securityCheck => runSecurityCheck(
+                      context,
+                      ref,
+                      entity,
+                    ),
+                    _ => action.kind == ActionKind.remind
                       // The memory is already saved here, so the reminder
                       // attaches to it directly (M7b).
                       ? setReminderForEntity(
@@ -100,7 +107,8 @@ class _Detail extends ConsumerWidget {
                           entity,
                           memoryId: record.id,
                         )
-                      : runActionWithFeedback(context, ref, action),
+                          : runActionWithFeedback(context, ref, action),
+                  },
                 ),
             ],
             ReminderSection(memoryId: record.id),

@@ -19,6 +19,7 @@ import 'package:tindak/features/memory/memory_detail_screen.dart';
 import 'package:tindak/features/memory/memory_providers.dart';
 import 'package:tindak/features/reminders/reminder_providers.dart';
 import 'package:tindak/features/reminders/widgets/reminder_actions.dart';
+import 'package:tindak/features/security/security_check_action.dart';
 import 'package:tindak/features/settings/settings_screen.dart';
 import 'package:tindak/features/sync/sync_providers.dart';
 import 'package:tindak/features/understanding/model/understanding_result.dart';
@@ -180,7 +181,13 @@ class IntakeGate extends ConsumerWidget {
     return IntakeResultScreen(
       incoming: incoming,
       understanding: understanding,
-      onAction: (action) => action.kind == ActionKind.remind
+      onAction: (action) => switch (action.kind) {
+        ActionKind.securityCheck => runSecurityCheck(
+          context,
+          ref,
+          action.entity,
+        ),
+        _ => action.kind == ActionKind.remind
           // Nothing is saved yet: setting the reminder saves the memory with
           // it, in one transaction, and the user sees one confirmation.
           ? setReminderForEntity(
@@ -190,7 +197,8 @@ class IntakeGate extends ConsumerWidget {
               incoming: incoming,
               understanding: understanding,
             )
-          : actions.runActionWithFeedback(context, ref, action),
+              : actions.runActionWithFeedback(context, ref, action),
+      },
       onSave: understanding == null
           ? null
           : () => _save(context, ref, incoming, understanding),

@@ -16,4 +16,7 @@ final class Routes {
 
   /// Email and six-digit code. Pops `true` once signed in.
   static const String signIn = '/sign-in';
+
+  /// What a security check found for one link (M8a).
+  static const String securityResult = '/security';
 }

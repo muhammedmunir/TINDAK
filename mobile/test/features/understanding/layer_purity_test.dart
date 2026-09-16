@@ -124,6 +124,35 @@ void main() {
     expect(users, <String>['lib/features/actions/executor/external_launcher.dart']);
   });
 
+  test('Protect sends nothing and decides nothing on its own (M8a)', () {
+    // The local layer is the whole of M8a: it must not reach the network, and
+    // it must not be reachable except from the button the user presses. A
+    // background scanner would arrive as an import here first.
+    expect(
+      violations('lib/features/security', <RegExp>[
+        RegExp(r'''import\s+[\'"]package:supabase'''),
+        RegExp(r'''import\s+[\'"]package:http/'''),
+        RegExp(r'''import\s+[\'"]dart:io'''),
+        RegExp(r'''import\s+[\'"]package:tindak/features/ai/'''),
+        RegExp(r'HttpClient'),
+        RegExp(r'Timer'),
+        RegExp(r'Clipboard\.'),
+      ]),
+      isEmpty,
+    );
+  });
+
+  test('the local analyser cannot reach HIGH RISK', () {
+    // Enforced in code as well as in tests: nothing on the device is strong
+    // enough evidence to call a link dangerous (M8 plan, section 3.1).
+    final code = File('lib/features/security/analyzer/url_safety_analyzer.dart')
+        .readAsLinesSync()
+        .where((line) => !line.trimLeft().startsWith('//'))
+        .join(' ');
+
+    expect(code.contains('RiskLevel.high'), isFalse);
+  });
+
   test('the clipboard is touched in exactly two files', () {
     // ADR-004 and PD-033: one file reads the clipboard, and only on the Tampal
     // press; one file writes it, and only on the Salin press. A third file

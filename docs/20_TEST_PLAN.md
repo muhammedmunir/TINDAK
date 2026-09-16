@@ -569,6 +569,60 @@ reminder from the local time the user chose on every start and resume.
 
 ---
 
+## 9.3 M8a Protect (local) — evidence record
+
+### Heuristic matrix
+
+Every check, its level, the words the user reads, and the pair of tests that
+pin it. All of them run on device with no network.
+
+| Code | Level | Malay reason | Fires on | Must not fire on |
+|---|---|---|---|---|
+| `credentialsInUrl` | SUSPICIOUS | Pautan ini mengandungi nama pengguna atau kata laluan sebelum nama domain. | `https://maybank2u.com.my@evil.example/login` | `https://example.com/path@handle` |
+| `encodedAuthorityCharacter` | SUSPICIOUS | Nama domain dalam pautan ini disembunyikan menggunakan aksara berkod. | `https://maybank2u.com.my%40evil.example/login` | `https://example.com/search%40term` |
+| `mixedScriptHost` | SUSPICIOUS | Nama domain mencampurkan huruf daripada sistem tulisan berbeza. | `https://mayb<Cyrillic а>nk.com` | a wholly non-Latin domain |
+| `normalisationMismatch` | SUSPICIOUS | Pautan yang dipaparkan berbeza daripada pautan sebenar. | shown `tnb.com.my`, real `evil.example` | `example.com` → `https://example.com` |
+| `notEncrypted` | CAUTION | Pautan ini tidak menggunakan sambungan HTTPS. | `http://example.com` | `https://example.com` |
+| `ipAddressHost` | CAUTION | Pautan ini menggunakan alamat IP secara terus. | `https://192.168.1.10/login` | `https://192-168-1-10.example.com`, `https://999.999.999.999` |
+| `punycodeHost` | CAUTION | Nama domain menggunakan format Punycode. | `https://xn--80ak6aa92e.com` | `https://example.com` |
+| `unusualPort` | CAUTION | Pautan ini menggunakan port yang tidak biasa. | `https://example.com:8443/x` | `:443`, `:80` |
+| `deepSubdomains` | CAUTION | Nama domain mempunyai terlalu banyak bahagian. | `https://a.b.c.d.e.example.com` | `https://a.b.c.co.uk` |
+| `urlShortener` | CAUTION | Pautan ini menggunakan perkhidmatan pemendek pautan, jadi destinasi sebenar tidak kelihatan. | `https://bit.ly/3abcdef` | `https://bitly.example.com/x` |
+
+Left out deliberately: brand impersonation (C-4), URL length, and general
+percent-encoding. Each would guess.
+
+### Automated (2026-09-16)
+
+`flutter analyze` clean, **784/784** tests pass — 25 analyser, 13 result and
+action, and the scope guards below.
+
+Guards that hold the milestone's shape:
+
+- the local analyser's source cannot mention `RiskLevel.high`, so no on-device
+  input can reach it;
+- `lib/features/security` may not import Supabase, an HTTP client, `dart:io`,
+  AI, or touch a `Timer` or the clipboard — a background scanner would arrive
+  as one of those imports first;
+- three cautions stay CAUTION (no scoring, C-2);
+- a clean check never opens what M4 refuses.
+
+### Emulator (2026-09-16)
+
+| Scenario | Result |
+|---|---|
+| HTTPS link, guest | **RISIKO RENDAH**, "Tiada tanda risiko ditemui dalam semakan tempatan.", plus the separate sign-in line — the level is not penalised for being a guest (C-1) |
+| `http://` link | **BERHATI-HATI**, "Pautan ini tidak menggunakan sambungan HTTPS." |
+| `https://maybank2u.com.my@contoh-penipu.xyz/login` | **MENCURIGAKAN**, with the credentials reason; the row's host reads `contoh-penipu.xyz` |
+| Opening a suspicious link | asks "Pautan ini mempunyai tanda risiko. Anda masih mahu membukanya?"; confirming opened Chrome through the existing M4 path |
+| Airplane mode | full check ran offline: port + shortener, two cautions, stayed **BERHATI-HATI** |
+| Every result | carries the disclaimer; no percentage or score anywhere |
+
+No URL left the device at any point in M8a: there is no network code in the
+feature to send one.
+
+---
+
 ## 10. Integration
 
 ```text
