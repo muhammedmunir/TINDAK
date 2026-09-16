@@ -55,16 +55,19 @@ produced, and carries a fixed severity. No check invents a probability.
 | Code | Signal | Severity |
 |---|---|---|
 | `credentials_in_url` | userinfo present: `https://bank.com@evil.example` | suspicious |
-| `ip_address_host` | host is a raw IPv4 or IPv6 literal | suspicious |
+| `encoded_authority_character` | a percent-escape in the authority that decodes to `@`, `/` or `.` | suspicious |
 | `mixed_script_host` | one label mixes scripts, e.g. Latin with Cyrillic | suspicious |
+| `normalisation_mismatch` | the raw span and the normalised value differ beyond trimming | suspicious |
+| `not_encrypted` | scheme is `http` (C-5) | caution |
+| `ip_address_host` | host is a raw IPv4 or IPv6 literal | caution |
 | `punycode_host` | any `xn--` label | caution |
 | `unusual_port` | explicit port other than 80 or 443 | caution |
-| `deep_subdomains` | five or more labels | caution |
+| `deep_subdomains` | six or more labels — a conservative threshold, since `a.b.c.co.uk` is five | caution |
 | `url_shortener` | host is on a short, static list of shorteners | caution |
-| `not_encrypted` | scheme is `http` | caution |
-| `heavy_encoding` | many percent-escapes, or escapes that decode to `/`, `@` or `.` | caution |
-| `excessive_length` | URL longer than 300 characters | caution |
-| `normalisation_mismatch` | the raw span and the normalised value differ beyond trimming | suspicious |
+
+Dropped after the plan gate: `excessive_length` and general `heavy_encoding`.
+Length alone is not evidence, and percent-encoding in a path is ordinary; only
+encoding that disguises the **authority** is deterministic deception.
 
 `normalisation_mismatch` should never fire — PD-032 strips invisible characters
 before detection — and exists so that if it ever does, the user is told rather
@@ -108,7 +111,7 @@ provider changes one function and touches neither the app nor the database
 |---|---|---|
 | Threat match (malware, social engineering, unwanted software) | **high** | `provider_flagged` |
 | No match | no change to the local level | `provider_clean` |
-| Error, timeout, quota, offline | no change to the local level, and **at least caution** | `provider_unavailable` |
+| Error, timeout, quota, offline | **no change to the level** — an availability state, not a verdict (C-1) | `provider_unavailable` |
 
 ### 4.1 Exactly what leaves the device
 
@@ -128,13 +131,15 @@ local assessment      always present, works offline
 online reputation     checked | clean | flagged | unavailable | not signed in
 ```
 
-Following Product Direction's own example, **an attempted-but-failed online
-check makes the result at least CAUTION**, with the reason
-*"Semakan dalam talian tidak tersedia."* — offline, timeout, provider error and
-exhausted quota all land here, each with its own line of copy.
+**Locked at the M8 plan gate (C-1):** the online status never changes the risk
+level. A clean local scan with no connection stays **LOW RISK**, and says
+*"Tiada sambungan internet. Semakan tempatan masih tersedia."* Offline, timeout,
+provider error, exhausted quota and not-signed-in are all **availability
+states** — reported in their own words, never as an accusation against the link.
 
-A guest who has not signed in is a different case: nothing was attempted. See
-C-1.
+What TINDAK must never do in that state is imply the link is safe. The
+disclaimer is always present, and a result that could not be checked online says
+so plainly.
 
 ---
 
