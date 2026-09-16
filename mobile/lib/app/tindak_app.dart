@@ -3,8 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:tindak/app/reminder_bootstrap.dart';
 import 'package:tindak/app/routes.dart';
 import 'package:tindak/app/theme.dart';
+import 'package:tindak/features/actions/model/action_descriptor.dart';
 import 'package:tindak/features/actions/widgets/entity_row.dart' as actions;
 import 'package:tindak/features/auth/auth_providers.dart';
 import 'package:tindak/features/auth/sign_in_screen.dart';
@@ -15,13 +17,18 @@ import 'package:tindak/features/intake/intake_result_screen.dart';
 import 'package:tindak/features/intake/intake_understanding.dart';
 import 'package:tindak/features/memory/memory_detail_screen.dart';
 import 'package:tindak/features/memory/memory_providers.dart';
+import 'package:tindak/features/reminders/reminder_providers.dart';
+import 'package:tindak/features/reminders/widgets/reminder_actions.dart';
 import 'package:tindak/features/settings/settings_screen.dart';
 import 'package:tindak/features/sync/sync_providers.dart';
 import 'package:tindak/features/understanding/model/understanding_result.dart';
 
 /// The application shell.
 class TindakApp extends ConsumerStatefulWidget {
-  const TindakApp({super.key});
+  const TindakApp({this.openedMemoryId, super.key});
+
+  /// The memory whose notification started TINDAK, if a tap did (M7b).
+  final String? openedMemoryId;
 
   @override
   ConsumerState<TindakApp> createState() => _TindakAppState();
@@ -29,6 +36,7 @@ class TindakApp extends ConsumerStatefulWidget {
 
 class _TindakAppState extends ConsumerState<TindakApp> {
   late final AppLifecycleListener _lifecycle;
+  final GlobalKey<NavigatorState> _navigator = GlobalKey<NavigatorState>();
 
   @override
   void initState() {
@@ -44,16 +52,50 @@ class _TindakAppState extends ConsumerState<TindakApp> {
     // Resume is a sync trigger (docs/10_ARCHITECTURE.md section 8.1). Sync
     // moves only changes the user already made; it reads no clipboard and
     // saves nothing new.
+    // Alarms are a cache of the database; a start is the first chance to
+    // repair what a reboot, a force stop or a failed schedule left behind.
+    unawaited(ref.read(reminderServiceProvider).reconcile());
+
+    // A tap that arrived while TINDAK was already running.
+    ReminderBootstrap.tappedMemoryId.addListener(_openTappedMemory);
+    if (widget.openedMemoryId != null) {
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => _openMemory(widget.openedMemoryId!),
+      );
+    }
+
     _lifecycle = AppLifecycleListener(
-      onResume: () =>
-          unawaited(ref.read(syncControllerProvider.notifier).requestSync()),
+      onResume: () {
+        unawaited(ref.read(syncControllerProvider.notifier).requestSync());
+        // Alarms are a cache of the database, and Android can drop or delay
+        // them. Every resume repairs the difference (M7).
+        unawaited(ref.read(reminderServiceProvider).reconcile());
+      },
     );
   }
 
   @override
   void dispose() {
+    ReminderBootstrap.tappedMemoryId.removeListener(_openTappedMemory);
     _lifecycle.dispose();
     super.dispose();
+  }
+
+  void _openTappedMemory() {
+    final id = ReminderBootstrap.tappedMemoryId.value;
+    if (id == null) return;
+    ReminderBootstrap.tappedMemoryId.value = null;
+    _openMemory(id);
+  }
+
+  /// Opens the memory a notification refers to. The notification carries only
+  /// its id, so nothing about the item travels through Android.
+  void _openMemory(String memoryId) {
+    final navigator = _navigator.currentState;
+    if (navigator == null) return;
+    navigator
+      ..popUntil((route) => route.isFirst)
+      ..pushNamed(Routes.memoryDetail, arguments: memoryId);
   }
 
   @override
@@ -63,6 +105,7 @@ class _TindakAppState extends ConsumerState<TindakApp> {
     ref.watch(syncControllerProvider);
 
     return MaterialApp(
+      navigatorKey: _navigator,
       title: 'TINDAK',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.light,
@@ -137,7 +180,17 @@ class IntakeGate extends ConsumerWidget {
     return IntakeResultScreen(
       incoming: incoming,
       understanding: understanding,
-      onAction: (action) => actions.runActionWithFeedback(context, ref, action),
+      onAction: (action) => action.kind == ActionKind.remind
+          // Nothing is saved yet: setting the reminder saves the memory with
+          // it, in one transaction, and the user sees one confirmation.
+          ? setReminderForEntity(
+              context,
+              ref,
+              action.entity,
+              incoming: incoming,
+              understanding: understanding,
+            )
+          : actions.runActionWithFeedback(context, ref, action),
       onSave: understanding == null
           ? null
           : () => _save(context, ref, incoming, understanding),

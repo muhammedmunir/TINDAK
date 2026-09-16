@@ -18,8 +18,8 @@ const String actionUnavailableMessage =
 /// Shown only after the clipboard has actually accepted the value (M6b).
 const String copiedMessage = 'Disalin.';
 
-/// A date's reminder belongs to M7. Approved copy: it says what will happen,
-/// not that something is broken, and nothing is scheduled.
+/// Kept only for the case where a date action arrives with no reminder flow
+/// behind it, which no shipped screen does since M7b.
 const String reminderComingSoonMessage =
     'Peringatan akan tersedia dalam kemas kini akan datang.';
 

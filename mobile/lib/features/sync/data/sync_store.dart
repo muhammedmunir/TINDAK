@@ -9,6 +9,22 @@ import 'package:tindak/features/understanding/model/detected_entity.dart';
 import 'package:tindak/features/understanding/model/entity_type.dart';
 import 'package:uuid/uuid.dart';
 
+/// What a sign-out purge did, and which alarms it left for the caller to
+/// cancel.
+final class PurgeResult {
+  const PurgeResult.purged(this.cancelledAlarmIds) : purged = true;
+  const PurgeResult.refused()
+    : purged = false,
+      cancelledAlarmIds = const <int>[];
+
+  /// False when changes were still waiting for the cloud, in which case
+  /// nothing was deleted (PD-041).
+  final bool purged;
+
+  /// Notification ids whose alarms must now be cancelled.
+  final List<int> cancelledAlarmIds;
+}
+
 /// The device side of sync: everything sync reads from or writes to SQLite.
 ///
 /// Every query is scoped to one account id. Guest rows are touched in exactly
@@ -350,20 +366,47 @@ final class SyncStore {
   /// is still waiting for the cloud (ADR-031). Checked and deleted in one
   /// transaction, so a save arriving in between cannot be deleted unsent.
   ///
-  /// Returns false, and deletes nothing, when changes are still pending.
-  Future<bool> purgeAccountIfSafe(String userId) => _db.transaction(() async {
-    if (await pendingCount(userId) > 0) return false;
-    await (_db.delete(
-      _db.memories,
-    )..where((m) => m.ownerUserId.equals(userId))).go();
-    await (_db.delete(_db.syncMeta)..where(
-          (s) =>
-              s.key.equals(_cursorKey(userId)) |
-              s.key.equals(_lastPullKey(userId)),
-        ))
-        .go();
-    return true;
-  });
+  /// Returns [PurgeResult.refused], deleting nothing, when changes are still
+  /// pending. On success it returns the reminder alarm ids it removed: the
+  /// rows go by cascade with their memories, so the ids have to be read
+  /// **before** the delete or the alarms could never be cancelled (M7b).
+  Future<PurgeResult> purgeAccountIfSafe(String userId) =>
+      _db.transaction(() async {
+        if (await pendingCount(userId) > 0) return const PurgeResult.refused();
+
+        final alarms = await _db
+            .customSelect(
+              '''
+              SELECT r.notification_id AS id FROM reminders r
+              JOIN memories m ON m.id = r.memory_id
+              WHERE r.status = 'scheduled'
+                AND (r.owner_user_id = ?1 OR m.owner_user_id = ?1)
+              ''',
+              variables: <Variable<Object>>[Variable<String>(userId)],
+              readsFrom: <ResultSetImplementation<dynamic, dynamic>>{
+                _db.reminders,
+                _db.memories,
+              },
+            )
+            .map((row) => row.read<int>('id'))
+            .get();
+
+        await (_db.delete(
+          _db.memories,
+        )..where((m) => m.ownerUserId.equals(userId))).go();
+        // Any reminder still owned by the account whose memory was a guest
+        // row, which the cascade above would have missed.
+        await (_db.delete(
+          _db.reminders,
+        )..where((r) => r.ownerUserId.equals(userId))).go();
+        await (_db.delete(_db.syncMeta)..where(
+              (s) =>
+                  s.key.equals(_cursorKey(userId)) |
+                  s.key.equals(_lastPullKey(userId)),
+            ))
+            .go();
+        return PurgeResult.purged(alarms);
+      });
 
   Future<String?> _read(String key) async {
     final row = await (_db.select(

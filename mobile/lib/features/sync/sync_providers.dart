@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:tindak/core/clock/clock_provider.dart';
 import 'package:tindak/features/auth/auth_providers.dart';
 import 'package:tindak/features/memory/memory_providers.dart';
+import 'package:tindak/features/reminders/reminder_providers.dart';
 import 'package:tindak/features/sync/data/cloud_memory_api.dart';
 import 'package:tindak/features/sync/data/sync_store.dart';
 import 'package:tindak/features/sync/sync_engine.dart';
@@ -92,6 +93,11 @@ class SyncController extends Notifier<SyncPhase> {
     final account = ref.read(currentAccountProvider);
     if (account == null) return;
     await ref.read(syncStoreProvider).migrateGuestRows(account.id);
+    // The reminders on those memories move with them; same device, same
+    // alarms, nothing rescheduled.
+    await ref
+        .read(reminderRepositoryProvider)
+        .adoptGuestReminders(account.id);
     await requestSync();
   }
 
@@ -103,10 +109,18 @@ class SyncController extends Notifier<SyncPhase> {
     final store = ref.read(syncStoreProvider);
     final gateway = ref.read(authGatewayProvider);
 
-    if (!await store.purgeAccountIfSafe(account.id)) {
+    var purge = await store.purgeAccountIfSafe(account.id);
+    if (!purge.purged) {
       await requestSync();
-      if (!await store.purgeAccountIfSafe(account.id)) return false;
+      purge = await store.purgeAccountIfSafe(account.id);
+      if (!purge.purged) return false;
     }
+    // Reminders belong to the device, not the cloud (B-5). Their rows went
+    // with the memories; the alarms behind them are cancelled here, using the
+    // ids the purge read before deleting (M7b).
+    await ref
+        .read(reminderServiceProvider)
+        .cancelAlarms(purge.cancelledAlarmIds);
     // Local rows are gone before the session ends: if ending it failed, there
     // is nothing left to leak (ADR-031).
     await gateway.endSession();

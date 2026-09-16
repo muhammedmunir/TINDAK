@@ -25,6 +25,10 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # Fires reminders on the device (ADR-008, M7b). Inexact allow-while-idle
+  # only: TINDAK never requests an exact-alarm permission (ADR-024).
+  flutter_local_notifications: ^19.4.2
+
   # State management (ADR-016). Plain providers, no code generation, so
   # application logic is testable without a BuildContext or WidgetTester.
   flutter_riverpod: ^3.3.2
@@ -45,6 +49,10 @@ dependencies:
   # only by the adapter files listed in layer_purity_test.dart. Receives the
   # project URL and publishable key at build time, never from source.
   supabase_flutter: ^2.17.2
+
+  # Correct local fire time across a timezone or DST change, required by
+  # flutter_local_notifications for a zoned schedule (M7b).
+  timezone: ^0.10.0
 
   # Hands Call, WhatsApp and Open to the apps that do them (M4). The only
   # maintained bridge to Android's ACTION_VIEW, and it needs no permission:
