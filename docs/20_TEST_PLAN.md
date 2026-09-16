@@ -393,7 +393,7 @@ Environment: the single Supabase project (CEO decision). Run order
 
 #### Supabase migrations and RLS matrix (2026-09-15) — 32/32 PASS
 
-Run by Claude under the CEO override, project `bgagjiefhfkxrabmaipz`, Postgres
+Run by Claude under the CEO override, the TINDAK project (ref held locally, not committed), Postgres
 17.6, through the session pooler. Read-only check first: public schema empty,
 0 users.
 
@@ -459,7 +459,7 @@ stopped early and is a failure.
 
 #### Auth email configuration (2026-09-15) — BLOCKED
 
-Through the Management API, project `bgagjiefhfkxrabmaipz` confirmed first.
+Through the Management API, the TINDAK project (ref held locally, not committed) confirmed first.
 
 | Item | Before | After |
 |---|---|---|
