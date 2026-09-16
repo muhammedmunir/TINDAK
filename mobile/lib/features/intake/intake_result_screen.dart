@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:tindak/features/actions/model/action_descriptor.dart';
 import 'package:tindak/features/actions/resolver/action_resolver.dart';
 import 'package:tindak/features/actions/widgets/entity_row.dart';
+import 'package:tindak/features/ai/ai_copy.dart';
 import 'package:tindak/features/intake/incoming_text.dart';
 import 'package:tindak/features/understanding/model/understanding_result.dart';
 
@@ -29,6 +30,7 @@ class IntakeResultScreen extends StatelessWidget {
     this.onSave,
     this.isSaving = false,
     this.onClose,
+    this.onTryAi,
     this.resolver = const ActionResolver(),
     super.key,
   });
@@ -59,6 +61,16 @@ class IntakeResultScreen extends StatelessWidget {
   final bool isSaving;
 
   final VoidCallback? onClose;
+
+  /// Called when the user presses Cuba dengan AI.
+  ///
+  /// Offered **only** when the local engine found nothing (M9 gate, Q-2): a
+  /// result that already carries an actionable entity does not advertise a
+  /// slower, paid, network path to the same place. When null, the button is
+  /// not shown at all — which is also how every screen that is not the intake
+  /// result stays free of it.
+  final VoidCallback? onTryAi;
+
   final ActionResolver resolver;
 
   @override
@@ -102,14 +114,26 @@ class IntakeResultScreen extends StatelessWidget {
               ],
               if (result != null) ...<Widget>[
                 const SizedBox(height: 28),
-                if (result.isEmpty)
+                if (result.isEmpty) ...<Widget>[
                   Text(
                     nothingDetectedMessage,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
-                  )
-                else ...<Widget>[
+                  ),
+                  // The one way into the AI path, and it is a press. Nothing
+                  // here sends anything: the gates and the disclosure are
+                  // checked by the handler first (M9a).
+                  if (onTryAi != null) ...<Widget>[
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      key: const ValueKey<String>('try-ai'),
+                      onPressed: onTryAi,
+                      icon: const Icon(Icons.auto_awesome_outlined, size: 18),
+                      label: const Text(AiCopy.tryAction),
+                    ),
+                  ],
+                ] else ...<Widget>[
                   const _SectionLabel('Dikesan'),
                   const SizedBox(height: 8),
                   for (final entity in result.entities)
