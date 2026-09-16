@@ -62,3 +62,6 @@ desktop.ini
 *.aab
 *.aar
 *.so
+
+# The CLI creates this when run from inside supabase/ instead of the repo root.
+supabase/supabase/
