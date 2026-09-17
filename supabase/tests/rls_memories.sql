@@ -1,16 +1,27 @@
 -- TINDAK — RLS bypass tests for Memory (M5b)
 --
 -- HOW TO RUN
---   Supabase Dashboard -> SQL Editor -> paste this whole file -> Run.
---   The result grid lists every check. Every row must read PASS.
---   Copy the grid into docs/20_TEST_PLAN.md section 9 under a dated heading.
---   A run that was not recorded did not happen.
+--   Only through supabase/tests/run-rls-matrix.ps1. Do not paste this file into
+--   the SQL Editor: the two user ids below are placeholders the harness fills
+--   in, and the block refuses to run without real test users behind them.
+--   Every row of the result must read PASS. Record the run in
+--   docs/20_TEST_PLAN.md section 9 under a dated heading; a run that was not
+--   recorded did not happen.
 --
--- SAFE ON THE LIVE PROJECT
---   Creates two throwaway users with random ids and @tindak.invalid emails,
---   and deletes both at the end, which removes every row they created by
---   cascade. If anything fails part-way, the whole block rolls back and
---   nothing is left behind. It never reads or modifies any other user's data.
+-- NEVER WRITES TO auth.* (EAR-BLOCKER-01)
+--   An earlier version inserted its test users straight into auth.users. On
+--   2026-09-16 a direct write like that left a row GoTrue could not read and
+--   broke sign-in for the whole project. Test users are now created and deleted
+--   only by the harness, through the Auth Admin API. This file reads auth.users
+--   once, to confirm the ids it was given are those throwaway users, and never
+--   inserts, updates or deletes anything in the auth schema.
+--
+-- SCOPE OF WHAT IT TOUCHES
+--   Refuses to start unless both ids belong to rls-test-*@tindak.invalid users
+--   that own no data yet. It creates rows only for those two users, removes
+--   them from public.memories at the end (entities follow by cascade), and
+--   never reads or modifies any other user's data. If anything fails part-way,
+--   the block rolls back; the harness still deletes the two users.
 --
 -- WHY POSITIVE CONTROLS
 --   A policy that refuses everything would "pass" every bypass test. P-*
@@ -35,8 +46,9 @@ create temp table rls_results (
 
 do $rls$
 declare
-  a        uuid := gen_random_uuid();
-  b        uuid := gen_random_uuid();
+  -- Filled in by run-rls-matrix.ps1 with users it created via the Auth Admin API.
+  a        uuid := '__RLS_TEST_USER_A__'::uuid;
+  b        uuid := '__RLS_TEST_USER_B__'::uuid;
   a_mem    uuid := gen_random_uuid();
   a_tomb   uuid := gen_random_uuid();
   a_push   uuid := gen_random_uuid();
@@ -48,13 +60,28 @@ declare
   ts_after  timestamptz;
 begin
   -- -------------------------------------------------------------------------
-  -- Setup, as the SQL Editor's owner role (RLS does not apply to it)
+  -- Guard: refuse to touch anyone who is not a harness-created test user
   -- -------------------------------------------------------------------------
-  insert into auth.users (id, email, aud, role)
-  values
-    (a, 'rls-test-a-' || a || '@tindak.invalid', 'authenticated', 'authenticated'),
-    (b, 'rls-test-b-' || b || '@tindak.invalid', 'authenticated', 'authenticated');
+  if a = b then
+    raise exception 'RLS fixture refused: the two test users must be different';
+  end if;
 
+  select count(*) into n
+  from auth.users u
+  where u.id in (a, b)
+    and u.email like 'rls-test-%@tindak.invalid';
+  if n <> 2 then
+    raise exception 'RLS fixture refused: ids are not two rls-test-*@tindak.invalid users';
+  end if;
+
+  select count(*) into n from public.memories where user_id in (a, b);
+  if n <> 0 then
+    raise exception 'RLS fixture refused: test users already own memories';
+  end if;
+
+  -- -------------------------------------------------------------------------
+  -- Setup, as the owner role (RLS does not apply to it)
+  -- -------------------------------------------------------------------------
   insert into public.memories (id, user_id, content, intake_source)
   values (b_mem, b, 'B private memory 012-3456789', 'share');
 
@@ -555,13 +582,15 @@ begin
   where ns.nspname = 'public' and p.proname = 'push_memory';
 
   -- -------------------------------------------------------------------------
-  -- Cleanup: removes both test users and, by cascade, every row they made
+  -- Cleanup: the test users' application rows only. The users themselves are
+  -- deleted afterwards by the harness through the Auth Admin API (Z-2).
   -- -------------------------------------------------------------------------
   perform set_config('request.jwt.claims', '', true);
   perform set_config('request.jwt.claim.sub', '', true);
-  delete from auth.users where id in (a, b);
+  delete from public.memories where user_id in (a, b);
 
   select count(*) into n from public.memories where user_id in (a, b);
+  select n + count(*) into n from public.memory_entities where user_id in (a, b);
   insert into rls_results (id, check_, expected, observed, result) values
     ('Z-1', 'test data removed', '0 rows left', n || ' row(s)',
      case when n = 0 then 'PASS' else 'FAIL' end);
