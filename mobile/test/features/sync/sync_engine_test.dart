@@ -930,6 +930,253 @@ void main() {
         expect(line, isNot(contains('Memori')));
       }
     });
+
+    // -------------------------------------------------------------------------
+    // R1 regression: tombstoned memories must cancel their OS alarms
+    // -------------------------------------------------------------------------
+    test('11. R1: tombstone in full pull cancels OS alarm for the deleted memory',
+        () async {
+      // A tombstone is a memory the cloud has marked deleted (deletedAt != null)
+      // but still returns in the pull response. _applyOne() deletes the local
+      // row via cascade, which silently drops the reminder row — and therefore
+      // the notification ID — before commitFullPull ever reads it.
+      // R1 fix: collect alarm IDs for tombstoned memories BEFORE _applyOne.
+
+      final cancelledAlarmIds = <int>[];
+      final testEngine = SyncEngine(
+        store: store,
+        api: cloud,
+        clock: clock,
+        onAlarmsCancelled: (ids) async => cancelledAlarmIds.addAll(ids),
+      );
+
+      // 1. Save two memories and sync them to the cloud.
+      final survivingId = await save('Memori yang akan kekal');
+      final tombstonedId = await save('Memori yang akan di-tombstone');
+      await testEngine.sync(userA);
+
+      // 2. Set reminders on both.
+      final rSurviving = (await reminders.create(
+        memoryId: survivingId,
+        at: LocalDateTime.parse('2027-08-01', '09:00')!,
+      )).valueOrNull!;
+      final rTombstoned = (await reminders.create(
+        memoryId: tombstonedId,
+        at: LocalDateTime.parse('2027-08-02', '09:00')!,
+      )).valueOrNull!;
+      expect(await reminders.active(), hasLength(2));
+
+      // 3. On the cloud, tombstone the second memory (deletedAt is set, row
+      //    still present in the pull response — this is different from the
+      //    "purged" case where the server omits the row entirely).
+      cloud.tombstoneDirect(tombstonedId);
+
+      // 4. Advance past 80 days to trigger a full pull.
+      clock.value = clock.value.add(const Duration(days: 81));
+      final result = await testEngine.sync(userA);
+      expect(result, SyncResult.upToDate);
+
+      // 5. Tombstoned memory and its reminder must be gone from SQLite.
+      expect(await rowOf(tombstonedId), isNull,
+          reason: 'tombstoned memory must be deleted from local DB');
+      final allReminders = await (db.select(db.reminders)
+            ..where((r) => r.id.equals(rTombstoned.id)))
+          .get();
+      expect(allReminders, isEmpty,
+          reason: 'reminder for tombstoned memory must be removed');
+
+      // 6. Surviving memory and its reminder must be intact.
+      expect(await rowOf(survivingId), isNotNull);
+      final active = await reminders.active();
+      expect(active, hasLength(1));
+      expect(active.single.id, rSurviving.id);
+      expect(active.single.notificationId, rSurviving.notificationId);
+
+      // 7. The tombstoned reminder's alarm ID must have reached the callback;
+      //    the surviving reminder's alarm must NOT be cancelled.
+      expect(cancelledAlarmIds, contains(rTombstoned.notificationId),
+          reason: 'tombstone must trigger OS alarm cancellation');
+      expect(cancelledAlarmIds, isNot(contains(rSurviving.notificationId)),
+          reason: 'surviving reminder alarm must not be cancelled');
+    });
+
+    test('11b. R1: callback failure after tombstone does not affect DB or cursor',
+        () async {
+      // Same tombstone scenario, but the callback throws.
+      // Verifies PD-055 still holds for the tombstone path.
+      final logged = <String>[];
+      AppLogger.testSink = (name, message) => logged.add('$name:$message');
+      addTearDown(() => AppLogger.testSink = null);
+
+      final failEngine = SyncEngine(
+        store: store,
+        api: cloud,
+        clock: clock,
+        onAlarmsCancelled: (_) async =>
+            throw StateError('scheduler down RAHSIA'),
+      );
+
+      final survivingId = await save('Memori kekal R1b');
+      final tombstonedId = await save('Memori tombstone R1b');
+      await failEngine.sync(userA);
+
+      final rSurviving = (await reminders.create(
+        memoryId: survivingId,
+        at: LocalDateTime.parse('2027-09-01', '09:00')!,
+      )).valueOrNull!;
+      await reminders.create(
+        memoryId: tombstonedId,
+        at: LocalDateTime.parse('2027-09-02', '09:00')!,
+      );
+
+      cloud.tombstoneDirect(tombstonedId);
+      clock.value = clock.value.add(const Duration(days: 81));
+
+      logged.clear();
+      final result = await failEngine.sync(userA);
+
+      // Sync reports success despite callback failure.
+      expect(result, SyncResult.upToDate);
+
+      // DB changes are committed: tombstoned memory gone, survivor intact.
+      expect(await rowOf(tombstonedId), isNull);
+      expect(await rowOf(survivingId), isNotNull);
+      final active = await reminders.active();
+      expect(active, hasLength(1));
+      expect(active.single.id, rSurviving.id);
+
+      // Log contains safe code, no content.
+      expect(
+        logged.any((l) => l.contains('sync_alarm_cancel_failed_StateError')),
+        isTrue,
+      );
+      for (final line in logged) {
+        expect(line, isNot(contains('RAHSIA')));
+      }
+    });
+
+    // -------------------------------------------------------------------------
+    // R2 regression: fail-closed guarantees on staging metadata
+    // -------------------------------------------------------------------------
+    test('12. R2: markFullPullComplete throws when metadata is missing',
+        () async {
+      // Calling markFullPullComplete without a prior startFullPull must throw
+      // rather than silently create a synthetic "complete" record.
+      await expectLater(
+        store.markFullPullComplete(userA, 'ghost_attempt'),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('staging meta missing'),
+          ),
+        ),
+      );
+    });
+
+    test('13. R2: markFullPullComplete throws on userId/attemptId mismatch',
+        () async {
+      // Simulate metadata existing at stage:$userA:attempt_beta:meta, but
+      // its internal contents have attemptId='attempt_alpha' (e.g. key collision
+      // or corrupted record).
+      await db.into(db.syncMeta).insertOnConflictUpdate(
+        SyncMetaCompanion.insert(
+          key: 'stage:$userA:attempt_beta:meta',
+          value: '{"attemptId":"attempt_alpha","userId":"$userA","complete":false,"pageCount":0}',
+        ),
+      );
+
+      // Calling markFullPullComplete for attempt_beta must reject the mismatch.
+      await expectLater(
+        store.markFullPullComplete(userA, 'attempt_beta'),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('metadata mismatch'),
+          ),
+        ),
+      );
+
+      await store.cleanStaging(userA);
+    });
+
+    test('14. R2: commitFullPull throws and leaves dataset intact when a staging page is missing',
+        () async {
+      final memId = await save('Memori untuk ujian halaman hilang');
+      await engine.sync(userA);
+      final cursorBefore = await store.cursor(userA);
+
+      // Start attempt and stage page 0 and page 1.
+      await store.startFullPull(userA, 'corrupt_attempt');
+      await store.stageFullPullPage(
+          userA, 'corrupt_attempt', 0, <CloudMemory>[remote(memId, 'original text')]);
+      await store.stageFullPullPage(
+          userA, 'corrupt_attempt', 1, <CloudMemory>[]);
+
+      // Corrupt staging: delete page 0 directly from the DB.
+      await (db.delete(db.syncMeta)
+            ..where((s) => s.key.equals('stage:$userA:corrupt_attempt:page:0')))
+          .go();
+
+      // Write complete: true into the metadata directly.
+      await db.into(db.syncMeta).insertOnConflictUpdate(
+        SyncMetaCompanion.insert(
+          key: 'stage:$userA:corrupt_attempt:meta',
+          value:
+              '{"attemptId":"corrupt_attempt","userId":"$userA","complete":true,"pageCount":2}',
+        ),
+      );
+
+      // commitFullPull must refuse and throw BEFORE any dataset mutation.
+      await expectLater(
+        store.commitFullPull(userA, 'corrupt_attempt', null),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('staging pages missing'),
+          ),
+        ),
+      );
+
+      // Active dataset must be completely unchanged.
+      expect(await rowOf(memId), isNotNull,
+          reason: 'active memory must survive a failed commit');
+      final cursorAfter = await store.cursor(userA);
+      expect(cursorAfter?.encode(), cursorBefore?.encode(),
+          reason: 'cursor must not advance on a failed commit');
+
+      await store.cleanStaging(userA);
+    });
+
+    test('15. R2: commitFullPull throws on userId/attemptId metadata mismatch',
+        () async {
+      // Start a real staging session for attempt_A.
+      await store.startFullPull(userA, 'attempt_A');
+
+      // Overwrite the metadata directly with a mismatched internal attemptId.
+      await db.into(db.syncMeta).insertOnConflictUpdate(
+        SyncMetaCompanion.insert(
+          key: 'stage:$userA:attempt_A:meta',
+          value:
+              '{"attemptId":"attempt_X","userId":"$userA","complete":true,"pageCount":0}',
+        ),
+      );
+
+      await expectLater(
+        store.commitFullPull(userA, 'attempt_A', null),
+        throwsA(
+          isA<StateError>().having(
+            (e) => e.message,
+            'message',
+            contains('metadata mismatch'),
+          ),
+        ),
+      );
+
+      await store.cleanStaging(userA);
+    });
   });
 
   group('runs', () {

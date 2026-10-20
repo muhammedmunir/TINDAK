@@ -365,14 +365,32 @@ final class SyncStore {
 
   /// Marks the staging session for [attemptId] as complete once all pages have
   /// been received from the cloud.
+  ///
+  /// Throws [StateError] if the metadata record for [userId]/[attemptId] does
+  /// not exist or belongs to a different user or attempt. Creating synthetic
+  /// metadata here would defeat the fail-closed guarantee: a staging session
+  /// that was never started via [startFullPull] must not be committable.
   Future<void> markFullPullComplete(
     String userId,
     String attemptId,
   ) async {
     final metaStr = await _read(_stagingMetaKey(userId, attemptId));
-    final meta = metaStr != null
-        ? jsonDecode(metaStr) as Map<String, dynamic>
-        : <String, dynamic>{'attemptId': attemptId, 'userId': userId};
+    if (metaStr == null) {
+      throw StateError(
+        'Cannot mark full pull complete: staging meta missing for '
+        'attempt $attemptId (userId=$userId). '
+        'Was startFullPull() called for this attempt?',
+      );
+    }
+    final meta = jsonDecode(metaStr) as Map<String, dynamic>;
+    // Guard against cross-attempt or cross-user collisions in the key space.
+    if (meta['attemptId'] != attemptId || meta['userId'] != userId) {
+      throw StateError(
+        'Cannot mark full pull complete: metadata mismatch — '
+        'expected attemptId=$attemptId userId=$userId, '
+        'got attemptId=${meta["attemptId"]} userId=${meta["userId"]}',
+      );
+    }
     meta['complete'] = true;
     await _write(_stagingMetaKey(userId, attemptId), jsonEncode(meta));
   }
@@ -421,21 +439,49 @@ final class SyncStore {
       throw StateError('Cannot commit full pull: staging meta missing');
     }
     final meta = jsonDecode(metaStr) as Map<String, dynamic>;
+
+    // Guard: metadata must identify this exact attempt and user.
+    // Checked before 'complete' so cross-attempt corruption is reported accurately.
+    if (meta['attemptId'] != attemptId || meta['userId'] != userId) {
+      throw StateError(
+        'Cannot commit full pull: metadata mismatch — '
+        'expected attemptId=$attemptId userId=$userId, '
+        'got attemptId=${meta["attemptId"]} userId=${meta["userId"]}',
+      );
+    }
+
     if (meta['complete'] != true) {
       throw StateError('Cannot commit full pull: staging is incomplete');
     }
 
     final pageCount = meta['pageCount'] as int? ?? 0;
     final stagedMemories = <CloudMemory>[];
+    final missingPages = <int>[];
 
     for (var i = 0; i < pageCount; i++) {
       final pageKey = _stagingPageKey(userId, attemptId, i);
       final pageStr = await _read(pageKey);
-      if (pageStr == null) continue;
+      if (pageStr == null) {
+        missingPages.add(i);
+        continue;
+      }
       final rawList = jsonDecode(pageStr) as List<dynamic>;
       for (final item in rawList) {
         stagedMemories.add(CloudMemory.fromJson(item as Map<String, dynamic>));
       }
+    }
+
+    // Fail closed: every page that was staged must still be present.
+    // A missing page means the staging data is corrupt or was partially
+    // cleaned up between markFullPullComplete and commitFullPull.
+    // Committing a partial dataset would delete active memories whose IDs
+    // were only in the missing pages, which is data loss.
+    if (missingPages.isNotEmpty) {
+      throw StateError(
+        'Cannot commit full pull: staging pages missing for '
+        'attempt $attemptId — missing page indices: $missingPages. '
+        'The active dataset and cursor have not been modified.',
+      );
     }
 
     final cancelledAlarmIds = <int>[];
@@ -465,7 +511,29 @@ final class SyncStore {
         await (_db.delete(_db.memories)..where((m) => m.id.equals(p.id))).go();
       }
 
-      // Reconcile each staged cloud memory without deleting active rows.
+      // Reconcile each staged cloud memory.
+      // R1 fix: _applyOne deletes local rows for tombstoned memories via the
+      // database cascade (ON DELETE CASCADE on reminders.memory_id). Those
+      // reminder rows — and their notification IDs — must be collected BEFORE
+      // _applyOne is called for any tombstoned memory, otherwise the cascade
+      // deletes them silently and the OS alarm is never cancelled.
+      //
+      // Collect alarm IDs for tombstoned memories that have a local live row.
+      final tombstonedIds =
+          stagedMemories.where((m) => m.deletedAt != null).map((m) => m.id).toSet();
+      if (tombstonedIds.isNotEmpty) {
+        final tombstoneAlarms = await (_db.select(_db.reminders)
+              ..where(
+                (r) =>
+                    r.memoryId.isIn(tombstonedIds) &
+                    r.status.equals('scheduled'),
+              ))
+            .get();
+        cancelledAlarmIds.addAll(
+          tombstoneAlarms.map((a) => a.notificationId),
+        );
+      }
+
       for (final memory in stagedMemories) {
         await _applyOne(userId, memory);
       }
