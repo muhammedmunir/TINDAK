@@ -72,6 +72,34 @@ final class CloudMemory {
   final DateTime? deletedAt;
   final List<CloudEntity> entities;
 
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'id': id,
+    'content': content,
+    'intakeSource': intakeSource,
+    'sourceApp': sourceApp,
+    'createdAt': createdAt.toUtc().toIso8601String(),
+    'updatedAt': updatedAt?.toUtc().toIso8601String(),
+    'deletedAt': deletedAt?.toUtc().toIso8601String(),
+    'entities': entities.map((e) => e.toJson()).toList(),
+  };
+
+  factory CloudMemory.fromJson(Map<String, dynamic> json) => CloudMemory(
+    id: json['id'] as String,
+    content: json['content'] as String,
+    intakeSource: json['intakeSource'] as String,
+    sourceApp: json['sourceApp'] as String?,
+    createdAt: DateTime.parse(json['createdAt'] as String).toUtc(),
+    updatedAt: json['updatedAt'] == null
+        ? null
+        : DateTime.parse(json['updatedAt'] as String).toUtc(),
+    deletedAt: json['deletedAt'] == null
+        ? null
+        : DateTime.parse(json['deletedAt'] as String).toUtc(),
+    entities: (json['entities'] as List<dynamic>)
+        .map((e) => CloudEntity.fromJson(e as Map<String, dynamic>))
+        .toList(),
+  );
+
   @override
   String toString() =>
       'CloudMemory(id: $id, deleted: ${deletedAt != null}, '
@@ -96,6 +124,26 @@ final class CloudEntity {
   final double confidence;
   final int start;
   final int end;
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'id': id,
+    'type': type,
+    'rawValue': rawValue,
+    'normalizedValue': normalizedValue,
+    'confidence': confidence,
+    'start': start,
+    'end': end,
+  };
+
+  factory CloudEntity.fromJson(Map<String, dynamic> json) => CloudEntity(
+    id: json['id'] as String,
+    type: json['type'] as String,
+    rawValue: json['rawValue'] as String,
+    normalizedValue: json['normalizedValue'] as String,
+    confidence: (json['confidence'] as num).toDouble(),
+    start: json['start'] as int,
+    end: json['end'] as int,
+  );
 
   @override
   String toString() => 'CloudEntity($type, [$start, $end))';

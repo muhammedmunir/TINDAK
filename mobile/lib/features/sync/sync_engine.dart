@@ -36,6 +36,7 @@ final class SyncEngine {
     required CloudMemoryApi api,
     required Clock clock,
     this.pageSize = 200,
+    this.onAlarmsCancelled,
   }) : _store = store,
        _api = api,
        _clock = clock;
@@ -43,6 +44,12 @@ final class SyncEngine {
   final SyncStore _store;
   final CloudMemoryApi _api;
   final Clock _clock;
+
+  /// Called once per committed full pull with the notification IDs of alarms
+  /// that belong to reminders whose memories were purged from the cloud.
+  /// The caller (e.g. ReminderService / ReminderReconciler) cancels the alarms.
+  /// Null in builds or tests that do not wire up the reminder layer.
+  final Future<void> Function(List<int> notificationIds)? onAlarmsCancelled;
 
   /// Server changes fetched per request.
   final int pageSize;
@@ -104,6 +111,7 @@ final class SyncEngine {
     } catch (error, stackTrace) {
       _log.failure(
         'sync_failed_${error.runtimeType}',
+        error: error,
         stackTrace: stackTrace,
       );
       return SyncResult.failed;
@@ -136,12 +144,18 @@ final class SyncEngine {
 
   Future<void> _pull(String userId) async {
     final lastPull = await _store.lastPullAt(userId);
-    if (lastPull != null &&
-        _clock.now().toUtc().difference(lastPull) > fullPullAfter) {
-      _log.event('sync_full_pull');
-      await _store.resetForFullPull(userId);
-    }
+    final isFullPull = lastPull != null &&
+        _clock.now().toUtc().difference(lastPull) > fullPullAfter;
 
+    if (isFullPull) {
+      _log.event('sync_full_pull');
+      await _pullFull(userId);
+    } else {
+      await _pullIncremental(userId);
+    }
+  }
+
+  Future<void> _pullIncremental(String userId) async {
     final stored = await _store.cursor(userId);
     final since = stored?.updatedAt.subtract(cursorOverlap);
     SyncCursor? after;
@@ -169,5 +183,44 @@ final class SyncEngine {
     }
 
     await _store.saveLastPullAt(userId, _clock.now().toUtc());
+  }
+
+  Future<void> _pullFull(String userId) async {
+    final attemptId = '${_clock.now().toUtc().millisecondsSinceEpoch}';
+    await _store.startFullPull(userId, attemptId);
+
+    SyncCursor? after;
+    var pageIndex = 0;
+
+    while (true) {
+      final page = await _api.pull(
+        userId,
+        limit: pageSize,
+        after: after,
+      );
+      await _store.stageFullPullPage(userId, attemptId, pageIndex, page);
+      if (page.isEmpty) break;
+
+      final last = page.last;
+      final lastTime = last.updatedAt;
+      if (lastTime == null) break;
+      after = SyncCursor(lastTime, last.id);
+      pageIndex++;
+      if (page.length < pageSize) break;
+    }
+
+    await _store.markFullPullComplete(userId, attemptId);
+    final cancelledAlarms = await _store.commitFullPull(userId, attemptId, after);
+    await _store.saveLastPullAt(userId, _clock.now().toUtc());
+    if (cancelledAlarms.isNotEmpty && onAlarmsCancelled != null) {
+      try {
+        await onAlarmsCancelled!(cancelledAlarms);
+      } on Object catch (error, stackTrace) {
+        _log.failure(
+          'sync_alarm_cancel_failed_${error.runtimeType}',
+          stackTrace: stackTrace,
+        );
+      }
+    }
   }
 }

@@ -5,9 +5,14 @@
 !.env.client.example
 *.pem
 *.p12
+*.pfx
+*.der
+*.pepk
 *.jks
 *.keystore
+*.dpapi
 key.properties
+signing.properties
 service-account*.json
 google-services.json
 secrets/
@@ -65,3 +70,10 @@ desktop.ini
 
 # The CLI creates this when run from inside supabase/ instead of the repo root.
 supabase/supabase/
+
+/.crew/
+/.crew
+!.crew/artifacts/
+!.crew/graphs/
+!.crew/artifacts/.gitkeep
+!.crew/graphs/.gitkeep

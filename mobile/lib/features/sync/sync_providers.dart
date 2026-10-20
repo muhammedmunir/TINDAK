@@ -24,6 +24,8 @@ final Provider<SyncEngine?> syncEngineProvider = Provider<SyncEngine?>((ref) {
     store: ref.watch(syncStoreProvider),
     api: api,
     clock: ref.watch(clockProvider),
+    onAlarmsCancelled: (alarmIds) =>
+        ref.read(reminderServiceProvider).cancelAlarms(alarmIds),
   );
 });
 

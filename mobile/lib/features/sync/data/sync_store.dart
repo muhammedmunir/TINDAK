@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:drift/drift.dart';
 
 import 'package:tindak/core/database/tindak_database.dart';
@@ -296,15 +297,198 @@ final class SyncStore {
   Future<void> saveLastPullAt(String userId, DateTime time) =>
       _write(_lastPullKey(userId), '${time.millisecondsSinceEpoch}');
 
-  /// For a device that has not pulled within the tombstone purge window: an
-  /// incremental pull could miss deletions whose tombstones are already gone,
-  /// so this account's synced rows are dropped and pulled again in full.
+  static String _stagingAttemptKey(String userId) =>
+      'stage:$userId:active_attempt';
+  static String _stagingMetaKey(String userId, String attemptId) =>
+      'stage:$userId:$attemptId:meta';
+  static String _stagingPageKey(
+    String userId,
+    String attemptId,
+    int pageIndex,
+  ) =>
+      'stage:$userId:$attemptId:page:$pageIndex';
+
+  /// Removes all persistent staging entries in SQLite for [userId].
   ///
-  /// Pending rows are kept — they are this device's own unsent changes. Guest
-  /// rows are untouched.
+  /// Guarantees that interrupted or incomplete attempts never leak or mix with
+  /// future sync attempts or other accounts.
+  Future<void> cleanStaging(String userId) async {
+    final escaped = userId
+        .replaceAll(r'\', r'\\')
+        .replaceAll('%', r'\%')
+        .replaceAll('_', r'\_');
+    await _db.customStatement(
+      "DELETE FROM sync_meta WHERE key LIKE ?1 ESCAPE '\\'",
+      <Object?>['stage:$escaped:%'],
+    );
+  }
+
+  /// Begins a persistent staging session for a full pull under [attemptId].
+  ///
+  /// Any prior uncommitted staging for [userId] is cleaned up first.
+  Future<void> startFullPull(String userId, String attemptId) async {
+    await cleanStaging(userId);
+    await _write(_stagingAttemptKey(userId), attemptId);
+    await _write(
+      _stagingMetaKey(userId, attemptId),
+      jsonEncode(<String, dynamic>{
+        'attemptId': attemptId,
+        'userId': userId,
+        'complete': false,
+        'pageCount': 0,
+      }),
+    );
+  }
+
+  /// Persists one page of pulled cloud memories into SQLite staging.
+  Future<void> stageFullPullPage(
+    String userId,
+    String attemptId,
+    int pageIndex,
+    List<CloudMemory> page,
+  ) async {
+    final pageJson = jsonEncode(page.map((m) => m.toJson()).toList());
+    await _write(
+      _stagingPageKey(userId, attemptId, pageIndex),
+      pageJson,
+    );
+    await _write(
+      _stagingMetaKey(userId, attemptId),
+      jsonEncode(<String, dynamic>{
+        'attemptId': attemptId,
+        'userId': userId,
+        'complete': false,
+        'pageCount': pageIndex + 1,
+      }),
+    );
+  }
+
+  /// Marks the staging session for [attemptId] as complete once all pages have
+  /// been received from the cloud.
+  Future<void> markFullPullComplete(
+    String userId,
+    String attemptId,
+  ) async {
+    final metaStr = await _read(_stagingMetaKey(userId, attemptId));
+    final meta = metaStr != null
+        ? jsonDecode(metaStr) as Map<String, dynamic>
+        : <String, dynamic>{'attemptId': attemptId, 'userId': userId};
+    meta['complete'] = true;
+    await _write(_stagingMetaKey(userId, attemptId), jsonEncode(meta));
+  }
+
+  /// Returns whether staging for [attemptId] is complete.
+  Future<bool> isFullPullStagingComplete(
+    String userId,
+    String attemptId,
+  ) async {
+    final metaStr = await _read(_stagingMetaKey(userId, attemptId));
+    if (metaStr == null) return false;
+    final meta = jsonDecode(metaStr) as Map<String, dynamic>;
+    return meta['complete'] == true;
+  }
+
+  /// Atomically commits a completed full-pull staging session into SQLite
+  /// (EAR-FIX-01):
+  ///
+  /// 1. Verifies staging completion. Refuses to commit partial datasets.
+  /// 2. Reads all staged pages from SQLite.
+  /// 3. In a single atomic SQLite transaction:
+  ///    a. Collects all IDs present in the cloud dataset: [cloudIds].
+  ///    b. Identifies local synced memories for [userId] that are NOT in
+  ///       [cloudIds] (memories purged on the server after the 90-day window).
+  ///       Collects reminder notification IDs for these purged memories so
+  ///       alarms can be cancelled. Deletes only these purged memories; their
+  ///       entities and reminders cascade delete.
+  ///    c. For each memory in the staged dataset, applies it via [_applyOne].
+  ///       Existing memories are updated in-place, so their active reminders
+  ///       and notification IDs are 100% preserved in SQLite!
+  ///    d. Unsynced changes (`sync_status = 'pending'`) and guest memories
+  ///       (`owner_user_id IS NULL`) are completely untouched.
+  ///    e. Updates the cursor if [finalCursor] is supplied, or removes it if
+  ///       the cloud returned zero memories.
+  ///    f. Cleans up staging keys for [userId].
+  ///
+  /// Returns the notification IDs of alarms for memories that were purged from
+  /// the cloud.
+  Future<List<int>> commitFullPull(
+    String userId,
+    String attemptId,
+    SyncCursor? finalCursor,
+  ) async {
+    final metaStr = await _read(_stagingMetaKey(userId, attemptId));
+    if (metaStr == null) {
+      throw StateError('Cannot commit full pull: staging meta missing');
+    }
+    final meta = jsonDecode(metaStr) as Map<String, dynamic>;
+    if (meta['complete'] != true) {
+      throw StateError('Cannot commit full pull: staging is incomplete');
+    }
+
+    final pageCount = meta['pageCount'] as int? ?? 0;
+    final stagedMemories = <CloudMemory>[];
+
+    for (var i = 0; i < pageCount; i++) {
+      final pageKey = _stagingPageKey(userId, attemptId, i);
+      final pageStr = await _read(pageKey);
+      if (pageStr == null) continue;
+      final rawList = jsonDecode(pageStr) as List<dynamic>;
+      for (final item in rawList) {
+        stagedMemories.add(CloudMemory.fromJson(item as Map<String, dynamic>));
+      }
+    }
+
+    final cancelledAlarmIds = <int>[];
+
+    await _db.transaction(() async {
+      final cloudIds = stagedMemories.map((m) => m.id).toSet();
+
+      // Find local synced memories that no longer exist in the cloud.
+      final localSynced = await (_db.select(_db.memories)
+            ..where(
+              (m) =>
+                  m.ownerUserId.equals(userId) & m.syncStatus.equals(_synced),
+            ))
+          .get();
+
+      final purged =
+          localSynced.where((m) => !cloudIds.contains(m.id)).toList();
+
+      for (final p in purged) {
+        final alarms = await (_db.select(_db.reminders)
+              ..where(
+                (r) =>
+                    r.memoryId.equals(p.id) & r.status.equals('scheduled'),
+              ))
+            .get();
+        cancelledAlarmIds.addAll(alarms.map((a) => a.notificationId));
+        await (_db.delete(_db.memories)..where((m) => m.id.equals(p.id))).go();
+      }
+
+      // Reconcile each staged cloud memory without deleting active rows.
+      for (final memory in stagedMemories) {
+        await _applyOne(userId, memory);
+      }
+
+      if (finalCursor != null) {
+        await saveCursor(userId, finalCursor);
+      } else {
+        await (_db.delete(
+          _db.syncMeta,
+        )..where((s) => s.key.equals(_cursorKey(userId)))).go();
+      }
+
+      await cleanStaging(userId);
+    });
+
+    return cancelledAlarmIds;
+  }
+
+  /// Retained for direct unit testing of full-pull reset behavior.
   Future<void> resetForFullPull(String userId) => _db.transaction(() async {
     await (_db.delete(_db.memories)..where(
-          (m) => m.ownerUserId.equals(userId) & m.syncStatus.equals(_synced),
+          (m) =>
+              m.ownerUserId.equals(userId) & m.syncStatus.equals(_synced),
         ))
         .go();
     await (_db.delete(
@@ -405,6 +589,7 @@ final class SyncStore {
                   s.key.equals(_lastPullKey(userId)),
             ))
             .go();
+        await cleanStaging(userId);
         return PurgeResult.purged(alarms);
       });
 

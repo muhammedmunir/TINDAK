@@ -30,6 +30,22 @@ final class FakeCloud implements CloudMemoryApi {
   int pulledRows = 0;
   int pullRequests = 0;
 
+  /// When set, the fake throws [CloudUnavailableException] on the Nth pull
+  /// request **within the current full pull** — not the cumulative total.
+  /// Reset this to null after the test, or set it to 1 to fail on the very
+  /// first page of a full pull.
+  ///
+  /// Usage:
+  ///   cloud.fullPullFailOnPage = 2; // page-2 failure: page 1 succeeds first
+  int? fullPullFailOnPage;
+
+  /// Counts pull calls since [resetPageFailure] was last called.
+  int _pullsSinceReset = 0;
+
+  /// Resets the page-failure counter. Call this immediately before the sync
+  /// that should trigger the failure, so prior syncs do not count.
+  void resetPageFailure() => _pullsSinceReset = 0;
+
   DateTime _tick() => _now = _now.add(const Duration(milliseconds: 1));
 
   /// Moves server time on, as real time passes between writes.
@@ -96,6 +112,11 @@ final class FakeCloud implements CloudMemoryApi {
   }) async {
     _check(userId);
     pullRequests++;
+    _pullsSinceReset++;
+    if (fullPullFailOnPage != null &&
+        _pullsSinceReset == fullPullFailOnPage) {
+      throw const CloudUnavailableException();
+    }
     final visible =
         rows.values.where((r) => r.userId == userId).where((r) {
           if (after != null) {
